@@ -29,6 +29,13 @@ services:
       postgres:
         condition: service_healthy
 
+  web:
+    build:
+      context: apps/web
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
 volumes:
   openscout-postgres:
-

@@ -6,12 +6,13 @@ deterministic filters and ranking, and explains every recommendation with source
 
 ## Current milestone
 
-The repository currently contains the data foundation for the first vertical slice:
+The repository currently contains the first end-to-end product slice:
 
 1. Run a FastAPI service locally or with Docker Compose.
 2. Verify service health through `GET /health`.
 3. Persist GitHub repository metadata through versioned database migrations.
 4. Synchronize deterministic repository search results through the GitHub API.
+5. Explore results through a complete repository-intelligence web interface.
 
 Deterministic ranking and evaluation will be added incrementally after this foundation is stable.
 
@@ -27,6 +28,21 @@ Copy-Item .env.example .env
 ```
 
 Open <http://localhost:8000/docs> or request <http://localhost:8000/health>.
+
+## Web application
+
+The React interface lives in `apps/web` and includes discovery, results, repository detail,
+comparison, and evaluation surfaces.
+
+```powershell
+cd apps/web
+pnpm install
+pnpm run dev
+```
+
+Open <http://127.0.0.1:5173>. During development, `/api` requests are proxied to the FastAPI
+service on port `8000`. If the API is unavailable, the UI explicitly switches to demonstration
+data so the complete product flow remains reviewable.
 
 The first recommendation baseline is available through `POST /api/v1/search`:
 
@@ -91,6 +107,7 @@ The Compose stack starts PostgreSQL and the API. The API is available on port `8
 
 ```text
 apps/api/          FastAPI application
+apps/web/          React repository-intelligence interface
 packages/domain/   Shared domain contracts and configuration
 packages/database/ Database engine and session factory
 packages/github_client/ Typed GitHub API client
