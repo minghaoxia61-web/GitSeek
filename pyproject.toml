@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "openscout"
+version = "0.1.0"
+description = "Evidence-backed GitHub project discovery and contribution assistant"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "alembic>=1.16,<2.0",
+    "fastapi>=0.116,<0.117",
+    "httpx>=0.28,<1.0",
+    "psycopg[binary]>=3.2,<4.0",
+    "pydantic-settings>=2.10,<3.0",
+    "sqlalchemy>=2.0,<3.0",
+    "uvicorn[standard]>=0.35,<0.36",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4,<9.0",
+    "pytest-cov>=6.2,<7.0",
+    "ruff>=0.12,<1.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["apps*", "packages*", "workers*"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

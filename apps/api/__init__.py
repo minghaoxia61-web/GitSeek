@@ -1,0 +1,2 @@
+"""OpenScout HTTP API."""
+
