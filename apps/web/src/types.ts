@@ -31,3 +31,45 @@ export type SearchResponse = {
   ranking_version: string;
   results: Recommendation[];
 };
+
+export type InvestigationEvidence = {
+  id: string;
+  fact: string;
+  value: boolean | number | string;
+  source_url: string;
+  fetched_at: string;
+  confidence: "high" | "medium" | "low";
+};
+
+export type RepositoryInvestigation = {
+  full_name: string;
+  description: string | null;
+  html_url: string;
+  default_branch: string;
+  fetched_at: string;
+  confidence: "high" | "medium" | "low";
+  signals: {
+    has_readme: boolean;
+    has_contributing: boolean;
+    has_code_of_conduct: boolean;
+    has_issue_template: boolean;
+    has_pull_request_template: boolean;
+    has_security_policy: boolean;
+    has_license: boolean;
+    has_tests: boolean;
+    has_ci: boolean;
+    has_pyproject: boolean;
+    has_dependency_file: boolean;
+    has_docker: boolean;
+    readme_has_quickstart: boolean;
+  };
+  scores: {
+    community_health: number;
+    documentation: number;
+    engineering: number;
+    learning_friendliness: number;
+  };
+  evidence: InvestigationEvidence[];
+  risks: string[];
+  limitations: string[];
+};
