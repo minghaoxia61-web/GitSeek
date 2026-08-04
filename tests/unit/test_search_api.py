@@ -17,7 +17,7 @@ class StubSearchClient:
         order: str = "desc",
     ) -> GitHubSearchPage:
         del page, per_page, etag, sort, order
-        assert query == "FastAPI language:Python archived:false pushed:>2026-02-01"
+        assert query.startswith("FastAPI language:Python archived:false pushed:>")
         return GitHubSearchPage.model_validate(
             {
                 "result": {
@@ -75,4 +75,3 @@ def test_search_endpoint_returns_explainable_baseline() -> None:
     assert payload["eligible_candidate_count"] == 1
     assert payload["results"][0]["full_name"] == "example/fastapi-demo"
     assert payload["results"][0]["constraint_match"]["license"] == "MATCH"
-

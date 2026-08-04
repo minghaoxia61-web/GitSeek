@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     )
     github_token: SecretStr | None = Field(default=None, validation_alias="GITHUB_TOKEN")
     github_api_url: str = "https://api.github.com"
-    github_api_version: str = "2022-11-28"
+    github_api_version: str = "2026-03-10"
 
 
 @lru_cache

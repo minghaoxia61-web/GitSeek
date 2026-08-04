@@ -30,7 +30,7 @@ def _repository_payload(*, stars: int = 42) -> dict[str, object]:
 def test_search_repositories_returns_typed_page_and_metadata() -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         assert request.headers["authorization"] == "Bearer test-token"
-        assert request.headers["x-github-api-version"] == "2022-11-28"
+        assert request.headers["x-github-api-version"] == "2026-03-10"
         assert request.url.params["q"] == "language:Python"
         return httpx.Response(
             200,
@@ -61,6 +61,46 @@ def test_search_repositories_returns_typed_page_and_metadata() -> None:
     asyncio.run(run())
 
 
+def test_repository_content_methods_return_typed_models() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/community/profile"):
+            return httpx.Response(
+                200,
+                json={
+                    "health_percentage": 88,
+                    "files": {
+                        "readme": {"html_url": "https://github.com/example/demo/README.md"},
+                        "contributing": None,
+                    },
+                },
+            )
+        if request.url.path.endswith("/contents"):
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "type": "file",
+                        "name": "pyproject.toml",
+                        "path": "pyproject.toml",
+                        "sha": "abc123",
+                        "size": 120,
+                    }
+                ],
+            )
+        raise AssertionError(f"unexpected path: {request.url.path}")
+
+    async def run() -> None:
+        async with GitHubClient(transport=httpx.MockTransport(handler)) as client:
+            profile = await client.get_community_profile("example", "demo")
+            contents = await client.list_repository_contents("example", "demo")
+
+        assert profile.health_percentage == 88
+        assert profile.files.readme is not None
+        assert contents[0].name == "pyproject.toml"
+
+    asyncio.run(run())
+
+
 def test_search_repositories_raises_specific_rate_limit_error() -> None:
     async def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -79,4 +119,3 @@ def test_search_repositories_raises_specific_rate_limit_error() -> None:
                 raise AssertionError("expected GitHubRateLimitError")
 
     asyncio.run(run())
-

@@ -45,3 +45,45 @@ class GitHubSearchPage(BaseModel):
     rate_limit_remaining: int | None = None
     rate_limit_reset: int | None = None
 
+
+class GitHubContentItem(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    type: str
+    name: str
+    path: str
+    sha: str
+    size: int = 0
+    html_url: str | None = None
+    download_url: str | None = None
+    encoding: str | None = None
+    content: str | None = None
+
+
+class GitHubCommunityFile(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    html_url: str | None = None
+    url: str | None = None
+
+
+class GitHubCommunityFiles(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    code_of_conduct: GitHubCommunityFile | None = None
+    code_of_conduct_file: GitHubCommunityFile | None = None
+    contributing: GitHubCommunityFile | None = None
+    issue_template: GitHubCommunityFile | None = None
+    pull_request_template: GitHubCommunityFile | None = None
+    license: GitHubCommunityFile | None = None
+    readme: GitHubCommunityFile | None = None
+    security_policy: GitHubCommunityFile | None = None
+
+
+class GitHubCommunityProfile(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    health_percentage: int
+    description: str | None = None
+    files: GitHubCommunityFiles
+    updated_at: datetime | None = None

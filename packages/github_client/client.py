@@ -3,7 +3,13 @@ from types import TracebackType
 import httpx
 from pydantic import SecretStr
 
-from packages.github_client.schemas import GitHubSearchPage, GitHubSearchResult
+from packages.github_client.schemas import (
+    GitHubCommunityProfile,
+    GitHubContentItem,
+    GitHubRepository,
+    GitHubSearchPage,
+    GitHubSearchResult,
+)
 
 
 class GitHubAPIError(RuntimeError):
@@ -14,6 +20,10 @@ class GitHubRateLimitError(GitHubAPIError):
     def __init__(self, message: str, *, reset_at: int | None = None) -> None:
         super().__init__(message)
         self.reset_at = reset_at
+
+
+class GitHubNotFoundError(GitHubAPIError):
+    pass
 
 
 def _parse_optional_int(value: str | None) -> int | None:
@@ -31,7 +41,7 @@ class GitHubClient:
         *,
         token: SecretStr | str | None = None,
         base_url: str = "https://api.github.com",
-        api_version: str = "2022-11-28",
+        api_version: str = "2026-03-10",
         timeout: float = 20.0,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
@@ -117,3 +127,50 @@ class GitHubClient:
             ),
             rate_limit_reset=reset_at,
         )
+
+    async def _get_json(
+        self,
+        path: str,
+        *,
+        params: dict[str, str | int] | None = None,
+    ) -> object:
+        response = await self._client.get(path, params=params)
+        reset_at = _parse_optional_int(response.headers.get("x-ratelimit-reset"))
+        if response.status_code in {403, 429}:
+            raise GitHubRateLimitError("GitHub API rate limit exceeded", reset_at=reset_at)
+        if response.status_code == 404:
+            raise GitHubNotFoundError(f"GitHub resource not found: {path}")
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise GitHubAPIError(f"GitHub API request failed with {response.status_code}") from exc
+        return response.json()
+
+    async def get_repository(self, owner: str, repo: str) -> GitHubRepository:
+        payload = await self._get_json(f"/repos/{owner}/{repo}")
+        return GitHubRepository.model_validate(payload)
+
+    async def get_community_profile(self, owner: str, repo: str) -> GitHubCommunityProfile:
+        payload = await self._get_json(f"/repos/{owner}/{repo}/community/profile")
+        return GitHubCommunityProfile.model_validate(payload)
+
+    async def list_repository_contents(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        path: str = "",
+        ref: str | None = None,
+    ) -> list[GitHubContentItem]:
+        endpoint = f"/repos/{owner}/{repo}/contents"
+        if path:
+            endpoint = f"{endpoint}/{path.strip('/')}"
+        params = {"ref": ref} if ref else None
+        payload = await self._get_json(endpoint, params=params)
+        if not isinstance(payload, list):
+            raise GitHubAPIError(f"Expected a directory listing for {endpoint}")
+        return [GitHubContentItem.model_validate(item) for item in payload]
+
+    async def get_readme(self, owner: str, repo: str) -> GitHubContentItem:
+        payload = await self._get_json(f"/repos/{owner}/{repo}/readme")
+        return GitHubContentItem.model_validate(payload)

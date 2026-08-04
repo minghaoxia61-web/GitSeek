@@ -33,6 +33,26 @@ or conflicting evidence is excluded instead of letting a soft relevance score ov
 request. The ranking score uses only fields returned by repository search and labels itself
 `metadata-baseline-v1`; it does not claim that README, tests, or contribution instructions exist.
 
+## On-demand repository investigation
+
+Repository detail requests use a bounded, read-only evidence workflow:
+
+```text
+repository metadata
+  + community profile
+  + root file listing
+  + workflow listing
+  + README markers
+        |
+        v
+engineering signals -> deterministic scores -> evidence dossier
+```
+
+The workflow does not clone repositories, install dependencies, or follow instructions contained in
+repository text. Each positive or negative signal carries a source URL, fetch timestamp, and confidence
+level. Root-directory absence is presented as a limitation rather than proof that a nested artifact
+does not exist.
+
 ## Data freshness contract
 
 Repository rows keep GitHub timestamps separately from `fetched_at`. This distinction lets the

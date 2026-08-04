@@ -63,6 +63,19 @@ This baseline deliberately ranks only repository metadata. Every result warns th
 and contribution guidance have not yet been verified; those claims will be added only after the
 deep-investigation milestone.
 
+## Repository investigation
+
+OpenScout can now build an on-demand evidence dossier for a public repository:
+
+```powershell
+Invoke-RestMethod `
+  -Uri "http://127.0.0.1:8000/api/v1/repos/fastapi/fastapi/investigate"
+```
+
+The investigator reads GitHub's community profile, repository root, workflow directory, and README.
+It reports documentation, engineering, and learning-friendliness scores together with the source URL
+and fetch time for every claim. Repository content is treated as untrusted data and is never executed.
+
 ## Database migration
 
 With PostgreSQL running, apply the schema:
