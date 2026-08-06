@@ -67,6 +67,7 @@ function parseConstraints(query, body = {}) {
     if (lowered.includes("apache")) licenses.push("Apache-2.0");
     if (lowered.includes("gpl-3")) licenses.push("GPL-3.0");
   }
+  const hoursMatch = query.match(/每周[^0-9]*([0-9]+)[^0-9]*小时/);
   return {
     purpose: body.purpose || ((query.includes("贡献") || lowered.includes("issue")) ? "contribution" : "learning"),
     language: "Python",
@@ -74,7 +75,7 @@ function parseConstraints(query, body = {}) {
     licenses,
     exclude_archived: !query.includes("包含归档"),
     pushed_after: body.pushed_after || null,
-    weekly_hours: body.weekly_hours || null,
+    weekly_hours: body.weekly_hours || (hoursMatch ? Number(hoursMatch[1]) : null),
     platform: body.platform || (lowered.includes("windows") ? "Windows" : null),
     project_size: body.project_size || null
   };
@@ -242,16 +243,44 @@ async function recommendIssues(owner, repo, url) {
 }
 
 function evaluationSummary() {
+  const cases = [
+    ["Python FastAPI，MIT，最近半年更新", { technology: "FastAPI", license: "MIT", purpose: "learning" }],
+    ["每周 5 小时，第一次贡献 Django 项目", { technology: "Django", hours: 5, purpose: "contribution" }],
+    ["Windows 可运行的中文 OCR Python 项目", { platform: "Windows", purpose: "learning" }],
+    ["Apache 2.0 许可证的 RAG 工具，近一年活跃", { technology: "RAG", license: "Apache-2.0" }],
+    ["找一个 GPL-3.0 的 Python 安全工具", { license: "GPL-3.0" }],
+    ["我想学习 PyTorch 模型部署", { technology: "PyTorch", purpose: "learning" }],
+    ["最近 30 天更新的 Flask 项目", { technology: "Flask" }],
+    ["寻找 PostgreSQL 和 Redis 后端项目", { technology: "PostgreSQL" }],
+    ["贡献一个 help wanted 的 LLM 项目", { technology: "LLM", purpose: "contribution" }],
+    ["包含归档仓库的 FastAPI 搜索", { exclude_archived: false }]
+  ];
+  const failures = [];
+  let passedFields = 0;
+  let totalFields = 0;
+  for (const [query, expected] of cases) {
+    const constraints = parseConstraints(query);
+    for (const [key, value] of Object.entries(expected)) {
+      totalFields += 1;
+      const actual = key === "technology" ? constraints.technologies.includes(value) : key === "license" ? constraints.licenses.includes(value) : key === "hours" ? constraints.weekly_hours : constraints[key];
+      const expectedValue = key === "technology" || key === "license" ? true : value;
+      if (actual === expectedValue) passedFields += 1;
+      else failures.push({ case: query, expected: String(expectedValue), actual: String(actual) });
+    }
+  }
+  const accuracy = Math.round(passedFields / totalFields * 1000) / 10;
+  const failedCases = new Set(failures.map((item) => item.case)).size;
+  const caseRate = Math.round((cases.length - failedCases) / cases.length * 1000) / 10;
   return json({
     version: "parser-rules-v2",
     dataset_version: "smoke-queries-v1",
-    sample_count: 10,
+    sample_count: cases.length,
     generated_at: new Date().toISOString(),
     metrics: [
-      { key: "constraint_accuracy", label: "约束解析准确率", value: 100, unit: "%", target: 95, passed: true },
-      { key: "case_pass_rate", label: "完整用例通过率", value: 100, unit: "%", target: 90, passed: true }
+      { key: "constraint_accuracy", label: "约束解析准确率", value: accuracy, unit: "%", target: 95, passed: accuracy >= 95 },
+      { key: "case_pass_rate", label: "完整用例通过率", value: caseRate, unit: "%", target: 90, passed: caseRate >= 90 }
     ],
-    failures: []
+    failures
   });
 }
 
