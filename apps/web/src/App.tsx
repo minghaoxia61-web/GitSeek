@@ -1,7 +1,16 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { demoResponse } from "./mockData";
-import type { Recommendation, RepositoryInvestigation, SearchResponse, View } from "./types";
+import type { ContributionIssue, EvaluationSummary, Recommendation, RepositoryInvestigation, SearchResponse, View } from "./types";
+
+type SearchOptions = {
+  purpose: "learning" | "contribution";
+  weeklyHours: number;
+  platform: string | null;
+  licenses: string[];
+  recentOnly: boolean;
+  projectSize: "small" | "medium" | "large";
+};
 
 const sampleQueries = [
   "适合初学者的 FastAPI 项目，MIT 许可证，最近半年活跃",
@@ -103,12 +112,15 @@ function Shell({
   );
 }
 
-function DiscoverView({ onSearch }: { onSearch: (query: string) => Promise<void> }) {
+function DiscoverView({ onSearch }: { onSearch: (query: string, options: SearchOptions) => Promise<void> }) {
   const [query, setQuery] = useState(demoResponse.query);
   const [mode, setMode] = useState<"learn" | "contribute">("learn");
   const [advanced, setAdvanced] = useState(false);
   const [loading, setLoading] = useState(false);
   const [constraints, setConstraints] = useState(["Python"]);
+  const [weeklyHours, setWeeklyHours] = useState(5);
+  const [platform, setPlatform] = useState("");
+  const [projectSize, setProjectSize] = useState<"small" | "medium" | "large">("medium");
 
   const constraintOptions = ["Python", "MIT / Apache", "半年内活跃", "支持 Windows"];
 
@@ -122,9 +134,14 @@ function DiscoverView({ onSearch }: { onSearch: (query: string) => Promise<void>
     event.preventDefault();
     if (!query.trim()) return;
     setLoading(true);
-    const goal = mode === "learn" ? "用于学习" : "用于首次贡献";
-    const extras = constraints.length ? `；附加条件：${constraints.join("、")}` : "";
-    await onSearch(`${query.trim()}；目标：${goal}${extras}`);
+    await onSearch(query.trim(), {
+      purpose: mode === "learn" ? "learning" : "contribution",
+      weeklyHours,
+      platform: constraints.includes("支持 Windows") ? "Windows" : platform || null,
+      licenses: constraints.includes("MIT / Apache") ? ["MIT", "Apache-2.0"] : [],
+      recentOnly: constraints.includes("半年内活跃"),
+      projectSize,
+    });
     setLoading(false);
   }
 
@@ -164,15 +181,16 @@ function DiscoverView({ onSearch }: { onSearch: (query: string) => Promise<void>
           </div>
           {advanced && (
             <div className="advanced-grid">
-              <label>每周时间<select defaultValue="5"><option value="5">≤ 5 小时</option><option value="10">≤ 10 小时</option></select></label>
-              <label>项目规模<select defaultValue="medium"><option value="small">小型</option><option value="medium">中型</option><option value="large">大型</option></select></label>
-              <label>最低置信度<select defaultValue="medium"><option value="medium">中等以上</option><option value="high">仅高置信</option></select></label>
+              <label>每周时间<select value={weeklyHours} onChange={(event) => setWeeklyHours(Number(event.target.value))}><option value="5">≤ 5 小时</option><option value="10">≤ 10 小时</option><option value="20">≤ 20 小时</option></select></label>
+              <label>项目规模<select value={projectSize} onChange={(event) => setProjectSize(event.target.value as "small" | "medium" | "large")}><option value="small">小型 · 5k Star 以下</option><option value="medium">中型 · 1k–30k Star</option><option value="large">大型 · 10k Star 以上</option></select></label>
+              <label>运行平台<select value={platform} onChange={(event) => setPlatform(event.target.value)}><option value="">不限</option><option value="Windows">Windows</option><option value="macOS">macOS</option><option value="Linux">Linux</option></select></label>
             </div>
           )}
           <div className="console-actions">
             <button type="button" className="text-button" onClick={() => setAdvanced(!advanced)}>{advanced ? "收起条件" : "高级约束"} <span>{advanced ? "−" : "+"}</span></button>
             <button className="primary-button" disabled={loading}>{loading ? <><i className="spinner" /> 正在搜索</> : <>查看候选项目 <b>→</b></>}</button>
           </div>
+          {loading && <div className="search-progress" aria-live="polite"><span className="active">解析条件</span><span className="active">搜索 GitHub</span><span>硬条件过滤</span><span>生成推荐</span></div>}
         </form>
       </section>
 
@@ -282,10 +300,14 @@ function ResultsView({
         <div><small>原始需求</small><p>“{data.query}”</p></div>
         <button onClick={onNewSearch}>编辑查询</button>
         <div className="constraint-record">
+          <span>目标 · {data.constraints.purpose === "contribution" ? "首次贡献" : "学习项目"}</span>
           <span>语言 · {data.constraints.language}</span>
           {data.constraints.technologies.map((item) => <span key={item}>技术 · {item}</span>)}
           {data.constraints.licenses.map((item) => <span key={item}>许可 · {item}</span>)}
           {data.constraints.pushed_after && <span>更新 · {data.constraints.pushed_after} 之后</span>}
+          {data.constraints.weekly_hours && <span>时间 · 每周 {data.constraints.weekly_hours} 小时</span>}
+          {data.constraints.platform && <span>平台 · {data.constraints.platform}</span>}
+          {data.constraints.project_size && <span>规模 · {data.constraints.project_size === "small" ? "小型" : data.constraints.project_size === "medium" ? "中型" : "大型"}</span>}
         </div>
         <code>{data.generated_github_query}</code>
       </section>
@@ -326,15 +348,22 @@ function DetailView({
   repo,
   investigation,
   status,
+  issues,
+  issueStatus,
   onBack,
   onCompare,
+  onFeedback,
 }: {
   repo: Recommendation;
   investigation: RepositoryInvestigation | null;
   status: "loading" | "ready" | "unavailable";
+  issues: ContributionIssue[];
+  issueStatus: "loading" | "ready" | "unavailable";
   onBack: () => void;
   onCompare: () => void;
+  onFeedback: (action: "helpful" | "not_relevant" | "saved" | "opened_issue") => Promise<void>;
 }) {
+  const [feedbackMessage, setFeedbackMessage] = useState("");
   const scores = investigation?.scores;
   const dossierScore = scores
     ? (scores.documentation + scores.engineering + scores.learning_friendliness) / 3
@@ -357,6 +386,11 @@ function DetailView({
   ] as const;
   const risks = investigation?.risks ?? repo.risks;
 
+  async function feedback(action: "helpful" | "not_relevant" | "saved") {
+    await onFeedback(action);
+    setFeedbackMessage(action === "helpful" ? "已记录：推荐有帮助" : action === "saved" ? "已收藏到当前设备" : "已记录，我们会把它作为失败样本检查");
+  }
+
   return (
     <div className="page detail-page">
       <button className="back-button" onClick={onBack}>← 返回调查结果</button>
@@ -369,7 +403,7 @@ function DetailView({
           <div className="repo-meta"><span>★ {formatNumber(repo.stars)}</span><span>{repo.language}</span><span>{repo.license_spdx}</span><span>Default · {investigation?.default_branch ?? "main"}</span></div>
         </div>
         <ScoreDial value={dossierScore} />
-        <div className="detail-actions"><button className="secondary-button" onClick={onCompare}>加入对比</button><a className="primary-button" href={repo.html_url} target="_blank" rel="noreferrer">打开 GitHub ↗</a></div>
+        <div className="detail-actions"><button className="secondary-button" onClick={onCompare}>加入对比</button><button className="secondary-button" onClick={() => feedback("saved")}>收藏项目</button><a className="primary-button" href={repo.html_url} target="_blank" rel="noreferrer">打开 GitHub ↗</a></div>
       </section>
 
       {status === "loading" && <div className="detail-status"><i className="spinner" /> 正在读取社区档案、仓库目录、工作流和 README…</div>}
@@ -396,19 +430,28 @@ function DetailView({
             <div className="panel-title"><span>已检查的内容</span><small>只读检查</small></div>
             {["GitHub 仓库元数据", "社区健康档案", "根目录与 CI 工作流", "README 快速开始标记"].map((source, index) => <div className="coverage-row" key={source}><span>0{index + 1}</span><b>{source}</b><small>{status === "ready" ? "已读取" : "等待连接"}</small></div>)}
           </article>
+
+          <article className="panel issues-panel">
+            <div className="panel-title"><span>适合开始的 Issue</span><small>{issueStatus === "ready" ? `${issues.length} 个候选` : issueStatus === "loading" ? "正在刷新状态" : "暂不可用"}</small></div>
+            {issueStatus === "loading" && <div className="issues-loading"><i className="spinner" /> 正在检查开放状态、认领情况与任务描述…</div>}
+            {issueStatus === "ready" && issues.map((issue) => <a className="issue-row" href={issue.html_url} target="_blank" rel="noreferrer" key={issue.number} onClick={() => onFeedback("opened_issue")}><span className={`difficulty ${issue.difficulty}`}>{issue.difficulty === "easy" ? "容易" : issue.difficulty === "medium" ? "中等" : "较难"}</span><div><b>#{issue.number} {issue.title}</b><p>{issue.reasons.join(" · ")}{issue.risks[0] ? `；${issue.risks[0]}` : ""}</p></div><strong>{issue.score.toFixed(0)}</strong></a>)}
+            {issueStatus === "ready" && !issues.length && <p className="empty-copy">当前没有找到未认领且信息足够的开放 Issue。OpenScout 不会为了填满列表推荐不确定任务。</p>}
+            {issueStatus === "unavailable" && <p className="empty-copy">Issue 状态暂时无法刷新，请稍后再试或直接到 GitHub 查看。</p>}
+          </article>
         </section>
 
         <aside className="detail-side">
           <article className="panel"><div className="panel-title"><span>工程信号</span><small>仓库文件检查</small></div>{signalRows.map(([label, value]) => <div className="audit-row" key={label}><Signal tone={value === undefined ? "amber" : value ? "green" : "red"} /><span>{label}</span><b>{value === undefined ? "读取中" : value ? "已发现" : "未发现"}</b></div>)}</article>
           <article className="panel risk-panel"><div className="panel-title"><span>开始前留意</span><small>已知风险</small></div>{risks.length ? risks.map((risk, index) => <div key={risk}><b>0{index + 1}</b><p>{risk}</p></div>) : <p className="empty-copy">当前规则未发现显著风险，仍建议阅读原始贡献说明。</p>}</article>
           <article className="panel path-card"><small>检查范围</small><strong>只读取公开信息</strong><p>{investigation?.limitations[0] ?? "连接调查接口后，这里会显示本次检查没有覆盖的内容。"}</p><a href={repo.html_url} target="_blank" rel="noreferrer">到 GitHub 人工确认 →</a></article>
+          <article className="panel feedback-card"><div className="panel-title"><span>这条推荐怎么样？</span><small>反馈用于回归检查</small></div><div><button onClick={() => feedback("helpful")}>有帮助</button><button onClick={() => feedback("not_relevant")}>不太相关</button></div>{feedbackMessage && <p>{feedbackMessage}</p>}</article>
         </aside>
       </div>
     </div>
   );
 }
 
-function CompareView({ repos, onDiscover, onDetail }: { repos: Recommendation[]; onDiscover: () => void; onDetail: (repo: Recommendation) => void }) {
+function CompareView({ repos, onDiscover, onDetail, onRemove }: { repos: Recommendation[]; onDiscover: () => void; onDetail: (repo: Recommendation) => void; onRemove: (name: string) => void }) {
   if (!repos.length) {
     return (
       <div className="page compare-page">
@@ -424,7 +467,7 @@ function CompareView({ repos, onDiscover, onDetail }: { repos: Recommendation[];
       <section className="page-heading"><div className="kicker">项目对比</div><h1>并排看清差异</h1><p>综合分只是入口。这里重点比较相关度、维护情况、许可证和主要风险。</p></section>
       <div className="compare-grid">
         <div className="compare-labels"><div className="compare-empty"><span>比较项</span></div>{["综合匹配", "技术相关", "维护活跃", "项目规模", "许可证", "最近推送", "主要风险"].map((label) => <div key={label}>{label}</div>)}</div>
-        {items.map((repo, index) => <article className="compare-column" key={repo.full_name}><header><small>候选 {index + 1}</small><h3>{repo.full_name}</h3><p>{repo.description}</p></header><div><ScoreDial value={repo.score} small /></div><div><strong>{repo.score_breakdown.relevance?.toFixed(0) ?? "—"}</strong><span>/ 35</span></div><div><strong>{repo.score_breakdown.activity?.toFixed(0) ?? "—"}</strong><span>/ 30</span></div><div><strong>{formatNumber(repo.stars)}</strong><span> Stars</span></div><div><span className="license-badge">{repo.license_spdx}</span></div><div><strong>{repo.pushed_at?.slice(0, 10)}</strong></div><div className="compare-risk">{repo.risks[0]}</div><footer><button onClick={() => onDetail(repo)}>查看项目档案 →</button></footer></article>)}
+        {items.map((repo, index) => <article className="compare-column" key={repo.full_name}><header><div className="compare-column-head"><small>候选 {index + 1}</small><button onClick={() => onRemove(repo.full_name)} aria-label={`移除 ${repo.full_name}`}>移除</button></div><h3>{repo.full_name}</h3><p>{repo.description}</p></header><div><ScoreDial value={repo.score} small /></div><div><strong>{repo.score_breakdown.relevance?.toFixed(0) ?? "—"}</strong><span>/ 35</span></div><div><strong>{repo.score_breakdown.activity?.toFixed(0) ?? "—"}</strong><span>/ 30</span></div><div><strong>{formatNumber(repo.stars)}</strong><span> Stars</span></div><div><span className="license-badge">{repo.license_spdx}</span></div><div><strong>{repo.pushed_at?.slice(0, 10)}</strong></div><div className="compare-risk">{repo.risks[0]}</div><footer><button onClick={() => onDetail(repo)}>查看项目档案 →</button></footer></article>)}
         {items.length < 3 && <button className="add-column" onClick={onDiscover}>+<span>添加一个候选项目</span></button>}
       </div>
     </div>
@@ -432,18 +475,38 @@ function CompareView({ repos, onDiscover, onDetail }: { repos: Recommendation[];
 }
 
 function EvalsView() {
+  const [summary, setSummary] = useState<EvaluationSummary | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [running, setRunning] = useState(false);
+
+  async function load(method: "GET" | "POST" = "GET") {
+    if (method === "POST") setRunning(true);
+    try {
+      const response = await fetch(method === "GET" ? "/api/v1/evals/summary" : "/api/v1/evals/run", { method });
+      if (!response.ok) throw new Error("Evaluation API unavailable");
+      setSummary(await response.json() as EvaluationSummary);
+      setStatus("ready");
+    } catch {
+      setStatus("unavailable");
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  useEffect(() => { void load(); }, []);
+
   return (
     <div className="page evals-page">
-      <section className="page-heading"><div className="kicker">质量记录</div><h1>先把评测标准定清楚</h1><p>这里不展示尚未运行的漂亮数字。接入固定测试集后，再记录真实版本结果。</p></section>
-      <section className="quality-grid">
-        {[
-          ["硬条件满足率", "语言、许可证、归档状态等条件是否真的满足。"],
-          ["推荐相关度", "前排项目是否符合用户的学习或贡献目标。"],
-          ["事实可追溯", "推荐理由是否能回到可访问、未过期的来源。"],
-          ["结果稳定性", "相同输入在版本升级后是否出现明显退化。"],
-        ].map(([title, copy], index) => <article className="quality-card" key={title}><span>0{index + 1}</span><h2>{title}</h2><p>{copy}</p></article>)}
-      </section>
-      <article className="quality-empty"><div><span>评测运行记录</span><h2>还没有可展示的真实运行结果</h2><p>后端接入固定测试集后，版本、样本量、通过率和失败案例会显示在这里。</p></div><code>tests/evals → 尚未连接</code></article>
+      <section className="page-heading page-heading--row"><div><div className="kicker">质量记录</div><h1>固定用例的真实结果</h1><p>只展示实际执行过的确定性检查；失败项会直接列出，不用漂亮数字遮住。</p></div><button className="primary-button" onClick={() => load("POST")} disabled={running}>{running ? <><i className="spinner" /> 正在运行</> : "重新运行评测"}</button></section>
+      {status === "loading" && <div className="eval-state"><i className="spinner" /> 正在读取评测结果…</div>}
+      {status === "unavailable" && <div className="notice"><Signal tone="amber" /><span>评测接口暂不可用。启动后端后即可运行固定用例。</span></div>}
+      {summary && <>
+        <section className="metric-grid">
+          {summary.metrics.map((metric) => <article className="metric-card" key={metric.key}><small>{metric.label}</small><strong>{metric.value}{metric.unit}</strong><span className={metric.passed ? "passed" : "failed"}>{metric.passed ? "达到目标" : "未达到目标"}</span><p>目标 ≥ {metric.target}{metric.unit}</p></article>)}
+          <article className="metric-card"><small>固定测试样本</small><strong>{summary.sample_count}</strong><span className="passed">{summary.dataset_version}</span><p>版本 {summary.version}</p></article>
+        </section>
+        <article className="panel eval-failures"><div className="panel-title"><span>失败样本</span><small>{summary.failures.length ? `${summary.failures.length} 项需要处理` : "全部通过"}</small></div>{summary.failures.length ? summary.failures.map((failure) => <div className="failure-row" key={`${failure.case}-${failure.expected}`}><b>{failure.case}</b><span>期望：{failure.expected}</span><span>实际：{failure.actual}</span></div>) : <p className="eval-success">当前固定用例全部通过。新增解析规则时仍需扩充困难样本。</p>}</article>
+      </>}
     </div>
   );
 }
@@ -454,21 +517,46 @@ export default function App() {
   const [selectedRepo, setSelectedRepo] = useState<Recommendation>(demoResponse.results[0]);
   const [investigation, setInvestigation] = useState<RepositoryInvestigation | null>(null);
   const [investigationStatus, setInvestigationStatus] = useState<"loading" | "ready" | "unavailable">("unavailable");
+  const [issues, setIssues] = useState<ContributionIssue[]>([]);
+  const [issueStatus, setIssueStatus] = useState<"loading" | "ready" | "unavailable">("unavailable");
   const [compare, setCompare] = useState<string[]>([]);
   const [fallback, setFallback] = useState(false);
 
-  async function search(query: string) {
+  async function search(query: string, options: SearchOptions) {
+    const recentDate = new Date();
+    recentDate.setDate(recentDate.getDate() - 183);
     try {
       const response = await fetch("/api/v1/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query, limit: 10 }),
+        body: JSON.stringify({
+          query,
+          limit: 10,
+          purpose: options.purpose,
+          weekly_hours: options.weeklyHours,
+          platform: options.platform,
+          project_size: options.projectSize,
+          licenses: options.licenses.length ? options.licenses : null,
+          pushed_after: options.recentOnly ? recentDate.toISOString().slice(0, 10) : null,
+        }),
       });
       if (!response.ok) throw new Error("Search API unavailable");
       setData(await response.json() as SearchResponse);
       setFallback(false);
     } catch {
-      setData({ ...demoResponse, query });
+      setData({
+        ...demoResponse,
+        query,
+        constraints: {
+          ...demoResponse.constraints,
+          purpose: options.purpose,
+          weekly_hours: options.weeklyHours,
+          platform: options.platform,
+          project_size: options.projectSize,
+          licenses: options.licenses,
+          pushed_after: options.recentOnly ? recentDate.toISOString().slice(0, 10) : null,
+        },
+      });
       setFallback(true);
     }
     setView("results");
@@ -482,6 +570,8 @@ export default function App() {
     setSelectedRepo(repo);
     setInvestigation(null);
     setInvestigationStatus("loading");
+    setIssues([]);
+    setIssueStatus("loading");
     setView("detail");
     const [owner, name] = repo.full_name.split("/");
     fetch(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/investigate`)
@@ -494,6 +584,39 @@ export default function App() {
         setInvestigationStatus("ready");
       })
       .catch(() => setInvestigationStatus("unavailable"));
+
+    fetch(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues?limit=5`)
+      .then((response) => {
+        if (!response.ok) throw new Error("Issue API unavailable");
+        return response.json() as Promise<{ issues: ContributionIssue[] }>;
+      })
+      .then((payload) => {
+        setIssues(payload.issues);
+        setIssueStatus("ready");
+      })
+      .catch(() => setIssueStatus("unavailable"));
+  }
+
+  async function submitFeedback(action: "helpful" | "not_relevant" | "saved" | "opened_issue") {
+    try {
+      const feedbackLog = JSON.parse(localStorage.getItem("openscout:feedback") ?? "[]") as Array<Record<string, string>>;
+      localStorage.setItem("openscout:feedback", JSON.stringify([...feedbackLog.slice(-99), { repository: selectedRepo.full_name, action, query: data.query, createdAt: new Date().toISOString() }]));
+      if (action === "saved") {
+        const stored = JSON.parse(localStorage.getItem("openscout:saved") ?? "[]") as string[];
+        localStorage.setItem("openscout:saved", JSON.stringify([...new Set([...stored, selectedRepo.full_name])]));
+      }
+    } catch {
+      // Storage can be unavailable in a locked-down browser; API feedback still proceeds.
+    }
+    try {
+      await fetch("/api/v1/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repository: selectedRepo.full_name, action, query: data.query }),
+      });
+    } catch {
+      // Device-local save and immediate UI feedback still work when the API is offline.
+    }
   }
 
   const compareRepos = useMemo(() => data.results.filter((repo) => compare.includes(repo.full_name)), [compare, data.results]);
@@ -502,8 +625,8 @@ export default function App() {
     <Shell view={view} setView={setView} compareCount={compare.length}>
       {view === "discover" && <DiscoverView onSearch={search} />}
       {view === "results" && <ResultsView data={data} compare={compare} toggleCompare={toggleCompare} fallback={fallback} onNewSearch={() => setView("discover")} onDetail={openDetail} />}
-      {view === "detail" && <DetailView repo={selectedRepo} investigation={investigation} status={investigationStatus} onBack={() => setView("results")} onCompare={() => toggleCompare(selectedRepo.full_name)} />}
-      {view === "compare" && <CompareView repos={compareRepos} onDiscover={() => setView("results")} onDetail={openDetail} />}
+      {view === "detail" && <DetailView repo={selectedRepo} investigation={investigation} status={investigationStatus} issues={issues} issueStatus={issueStatus} onBack={() => setView("results")} onCompare={() => toggleCompare(selectedRepo.full_name)} onFeedback={submitFeedback} />}
+      {view === "compare" && <CompareView repos={compareRepos} onDiscover={() => setView("results")} onDetail={openDetail} onRemove={toggleCompare} />}
       {view === "evals" && <EvalsView />}
     </Shell>
   );

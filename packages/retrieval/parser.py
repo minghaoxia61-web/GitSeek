@@ -59,11 +59,26 @@ def parse_search_constraints(query: str, *, today: date | None = None) -> Search
         if any(re.search(pattern, lowered) for pattern in patterns)
     ]
 
+    hours_match = re.search(r"(?:每周|一周)\s*(?:只有|大约|约)?\s*(\d+)\s*(?:个)?小时", query)
+    weekly_hours = int(hours_match.group(1)) if hours_match else None
+    if "贡献" in query or "issue" in lowered or "pull request" in lowered:
+        purpose = "contribution"
+    else:
+        purpose = "learning"
+
+    platform = None
+    for marker, canonical in (("windows", "Windows"), ("macos", "macOS"), ("linux", "Linux")):
+        if marker in lowered:
+            platform = canonical
+            break
+
     return SearchConstraints(
+        purpose=purpose,
         language="Python",
         technologies=technologies,
         licenses=licenses,
         exclude_archived="包含归档" not in query and "include archived" not in lowered,
         pushed_after=_parse_activity_date(query, reference_date),
+        weekly_hours=weekly_hours,
+        platform=platform,
     )
-

@@ -64,14 +64,19 @@ const repositories: Recommendation[] = [
 ];
 
 export const demoResponse: SearchResponse = {
+  session_id: "demo-session",
   query: "找一个适合 Python 初学者学习 FastAPI 的项目，MIT 许可证，最近半年有更新",
   generated_github_query: "FastAPI language:Python archived:false pushed:>2026-02-01",
   constraints: {
+    purpose: "learning",
     language: "Python",
     technologies: ["FastAPI"],
     licenses: ["MIT"],
     exclude_archived: true,
     pushed_after: "2026-02-01",
+    weekly_hours: null,
+    platform: null,
+    project_size: null,
   },
   source_total_count: 130908,
   eligible_candidate_count: 83,

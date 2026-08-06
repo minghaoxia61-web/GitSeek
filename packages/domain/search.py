@@ -7,14 +7,24 @@ from pydantic import BaseModel, Field
 class SearchRequest(BaseModel):
     query: str = Field(min_length=3, max_length=500)
     limit: int = Field(default=10, ge=1, le=20)
+    purpose: Literal["learning", "contribution"] | None = None
+    weekly_hours: int | None = Field(default=None, ge=1, le=40)
+    platform: str | None = Field(default=None, max_length=40)
+    project_size: Literal["small", "medium", "large"] | None = None
+    licenses: list[str] | None = None
+    pushed_after: date | None = None
 
 
 class SearchConstraints(BaseModel):
+    purpose: Literal["learning", "contribution"] = "learning"
     language: str = "Python"
     technologies: list[str] = Field(default_factory=list)
     licenses: list[str] = Field(default_factory=list)
     exclude_archived: bool = True
     pushed_after: date | None = None
+    weekly_hours: int | None = None
+    platform: str | None = None
+    project_size: Literal["small", "medium", "large"] | None = None
 
 
 class Recommendation(BaseModel):
@@ -34,6 +44,7 @@ class Recommendation(BaseModel):
 
 
 class SearchResponse(BaseModel):
+    session_id: str
     query: str
     generated_github_query: str
     constraints: SearchConstraints
@@ -41,4 +52,3 @@ class SearchResponse(BaseModel):
     eligible_candidate_count: int
     ranking_version: str
     results: list[Recommendation]
-

@@ -17,19 +17,60 @@ export type Recommendation = {
 };
 
 export type SearchResponse = {
+  session_id: string;
   query: string;
   generated_github_query: string;
   constraints: {
+    purpose: "learning" | "contribution";
     language: string;
     technologies: string[];
     licenses: string[];
     exclude_archived: boolean;
     pushed_after: string | null;
+    weekly_hours: number | null;
+    platform: string | null;
+    project_size: "small" | "medium" | "large" | null;
   };
   source_total_count: number;
   eligible_candidate_count: number;
   ranking_version: string;
   results: Recommendation[];
+};
+
+export type ContributionIssue = {
+  number: number;
+  title: string;
+  html_url: string;
+  labels: string[];
+  comments: number;
+  updated_at: string;
+  difficulty: "easy" | "medium" | "hard";
+  score: number;
+  reasons: string[];
+  risks: string[];
+};
+
+export type ContributionIssueResponse = {
+  full_name: string;
+  fetched_at: string;
+  issues: ContributionIssue[];
+  limitations: string[];
+};
+
+export type EvaluationSummary = {
+  version: string;
+  dataset_version: string;
+  sample_count: number;
+  generated_at: string;
+  metrics: Array<{
+    key: string;
+    label: string;
+    value: number;
+    unit: string;
+    target: number;
+    passed: boolean;
+  }>;
+  failures: Array<{ case: string; expected: string; actual: string }>;
 };
 
 export type InvestigationEvidence = {

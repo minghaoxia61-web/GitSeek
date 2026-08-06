@@ -127,6 +127,11 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, select:focus-visi
 .advanced-grid label { color: var(--muted); font-size: 8px; }
 .advanced-grid select { width: 100%; margin-top: 6px; padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--ink); font-size: 9px; }
 .console-actions { display: flex; justify-content: space-between; align-items: center; margin-top: 19px; }
+.search-progress { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--line); }
+.search-progress span { position: relative; padding-top: 8px; color: var(--faint); font-size: 8px; }
+.search-progress span::before { content: ""; position: absolute; inset: 0 0 auto; height: 3px; border-radius: 2px; background: #e1e5ea; }
+.search-progress span.active { color: var(--blue); }
+.search-progress span.active::before { background: var(--blue); }
 .sample-strip { display: grid; grid-template-columns: 120px repeat(3, 1fr); margin-top: 24px; border: 1px solid var(--line); border-radius: 11px; overflow: hidden; background: white; }
 .sample-strip > span { display: flex; align-items: center; padding: 14px; color: var(--faint); font-size: 9px; }
 .sample-strip button { padding: 14px; border: 0; border-left: 1px solid var(--line); background: white; color: var(--muted); font-size: 9px; text-align: left; cursor: pointer; }
@@ -265,6 +270,21 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, select:focus-visi
 .path-card > strong { display: block; margin: 13px 0 4px; font-size: 14px; }
 .path-card p { color: var(--muted); font-size: 9px; line-height: 1.6; }
 .path-card > a { display: block; margin-top: 13px; color: var(--blue); font-size: 9px; text-decoration: none; }
+.issues-loading { display: flex; align-items: center; gap: 9px; padding: 18px 0 4px; color: var(--muted); font-size: 9px; }
+.issue-row { display: grid; grid-template-columns: 45px minmax(0, 1fr) 30px; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); color: inherit; text-decoration: none; }
+.issue-row:last-child { border-bottom: 0; }
+.issue-row:hover b { color: var(--blue); }
+.difficulty { padding: 5px 3px; border-radius: 5px; font-size: 8px; text-align: center; }
+.difficulty.easy { background: var(--green-soft); color: var(--green); }
+.difficulty.medium { background: var(--amber-soft); color: var(--amber); }
+.difficulty.hard { background: var(--red-soft); color: var(--red); }
+.issue-row b { font-size: 10px; font-weight: 600; }
+.issue-row p { margin: 4px 0 0; color: var(--muted); font-size: 8px; line-height: 1.55; }
+.issue-row > strong { color: var(--blue); font: 12px var(--mono); text-align: right; }
+.feedback-card > div:nth-child(2) { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 14px; }
+.feedback-card button { min-height: 36px; border: 1px solid var(--line); border-radius: 7px; background: white; color: var(--muted); font-size: 9px; cursor: pointer; }
+.feedback-card button:hover { border-color: var(--blue); color: var(--blue); }
+.feedback-card > p { margin: 10px 0 0; color: var(--green); font-size: 8px; line-height: 1.5; }
 
 .page-heading { margin-bottom: 22px; padding-bottom: 26px; border-bottom: 1px solid var(--line); }
 .compare-grid { display: grid; grid-template-columns: 140px repeat(3, minmax(210px, 1fr)); overflow: auto; border: 1px solid var(--line); border-radius: 11px; background: white; }
@@ -273,6 +293,9 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, select:focus-visi
 .compare-labels .compare-empty { height: 140px; align-items: flex-end; color: var(--faint); }
 .compare-column header { height: 140px; }
 .compare-column header small { color: var(--blue); font-size: 8px; }
+.compare-column-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.compare-column-head button { padding: 0; border: 0; background: transparent; color: var(--faint); font-size: 8px; cursor: pointer; }
+.compare-column-head button:hover { color: var(--red); }
 .compare-column h3 { margin: 10px 0 7px; font: 600 14px var(--mono); overflow-wrap: anywhere; }
 .compare-column header p { margin: 0; color: var(--muted); font-size: 8px; line-height: 1.5; }
 .compare-column > div { display: flex; align-items: center; gap: 6px; }
@@ -297,6 +320,21 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, select:focus-visi
 .quality-empty h2 { margin: 8px 0 5px; font-size: 16px; }
 .quality-empty p { margin: 0; color: var(--muted); font-size: 9px; }
 .quality-empty code { color: var(--faint); font: 9px var(--mono); white-space: nowrap; }
+.page-heading--row { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.eval-state { display: flex; align-items: center; gap: 10px; min-height: 180px; justify-content: center; color: var(--muted); font-size: 10px; }
+.metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px; }
+.metric-card { padding: 20px; border: 1px solid var(--line); border-radius: 11px; background: white; }
+.metric-card small { color: var(--muted); font-size: 9px; }
+.metric-card strong { display: block; margin: 18px 0 7px; font: 500 29px var(--mono); }
+.metric-card > span { font-size: 8px; }
+.metric-card .passed { color: var(--green); }
+.metric-card .failed { color: var(--red); }
+.metric-card p { margin: 8px 0 0; color: var(--faint); font-size: 8px; }
+.failure-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--line); font-size: 9px; }
+.failure-row:last-child { border-bottom: 0; }
+.failure-row b { font-weight: 500; }
+.failure-row span { color: var(--muted); }
+.eval-success { margin: 16px 0 0; color: var(--green); font-size: 9px; }
 
 @media (max-width: 1120px) {
   .app-shell { grid-template-columns: 76px minmax(0, 1fr); }
@@ -313,6 +351,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, select:focus-visi
   .detail-grid { grid-template-columns: 1fr; }
   .detail-side { grid-template-columns: repeat(3, 1fr); }
   .quality-grid { grid-template-columns: repeat(2, 1fr); }
+  .metric-grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 760px) {
@@ -358,5 +397,9 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, select:focus-visi
   .evidence-item > a { grid-column: 2; }
   .quality-grid { grid-template-columns: 1fr; }
   .quality-empty { align-items: flex-start; flex-direction: column; }
+  .page-heading--row { display: block; }
+  .page-heading--row .primary-button { margin-top: 18px; }
+  .metric-grid { grid-template-columns: 1fr; }
+  .failure-row { grid-template-columns: 1fr; gap: 5px; }
   .compare-grid { grid-template-columns: 110px repeat(3, 220px); }
 }

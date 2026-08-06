@@ -6,6 +6,7 @@ from pydantic import SecretStr
 from packages.github_client.schemas import (
     GitHubCommunityProfile,
     GitHubContentItem,
+    GitHubIssue,
     GitHubRepository,
     GitHubSearchPage,
     GitHubSearchResult,
@@ -174,3 +175,19 @@ class GitHubClient:
     async def get_readme(self, owner: str, repo: str) -> GitHubContentItem:
         payload = await self._get_json(f"/repos/{owner}/{repo}/readme")
         return GitHubContentItem.model_validate(payload)
+
+    async def list_repository_issues(
+        self,
+        owner: str,
+        repo: str,
+        *,
+        state: str = "open",
+        per_page: int = 100,
+    ) -> list[GitHubIssue]:
+        payload = await self._get_json(
+            f"/repos/{owner}/{repo}/issues",
+            params={"state": state, "per_page": per_page, "sort": "updated"},
+        )
+        if not isinstance(payload, list):
+            raise GitHubAPIError("Expected an issue listing")
+        return [GitHubIssue.model_validate(item) for item in payload]

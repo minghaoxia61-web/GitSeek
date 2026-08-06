@@ -8,8 +8,10 @@ React and Vite application with a dense repository-intelligence visual system.
 - Discovery console with learning and contribution modes
 - Constraint-aware recommendation results
 - Repository evidence dossier
+- Refreshed, unassigned contribution-Issue recommendations
 - Three-way project comparison
-- Evaluation and trace dashboard
+- Device-local saves and recommendation feedback
+- Deterministic evaluation results with visible failure cases
 
 The search console calls the FastAPI service through Vite's `/api` development proxy. If the API
 is unavailable, the interface clearly labels and displays calibrated demo data instead of failing
@@ -30,4 +32,3 @@ The local app runs at <http://127.0.0.1:5173> and expects the API at
 ```powershell
 pnpm run build
 ```
-

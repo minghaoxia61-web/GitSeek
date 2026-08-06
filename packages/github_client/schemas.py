@@ -87,3 +87,32 @@ class GitHubCommunityProfile(BaseModel):
     description: str | None = None
     files: GitHubCommunityFiles
     updated_at: datetime | None = None
+
+
+class GitHubLabel(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    name: str
+
+
+class GitHubAssignee(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    login: str
+
+
+class GitHubIssue(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    number: int
+    title: str
+    body: str | None = None
+    html_url: str
+    state: str
+    labels: list[GitHubLabel] = Field(default_factory=list)
+    assignees: list[GitHubAssignee] = Field(default_factory=list)
+    comments: int = 0
+    locked: bool = False
+    created_at: datetime
+    updated_at: datetime
+    pull_request: dict[str, object] | None = None

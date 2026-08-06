@@ -14,7 +14,8 @@ The repository currently contains the first end-to-end product slice:
 4. Synchronize deterministic repository search results through the GitHub API.
 5. Explore results through a complete repository-intelligence web interface.
 
-Deterministic ranking and evaluation will be added incrementally after this foundation is stable.
+The current V1 also includes contribution-Issue screening, device-local saves, feedback capture,
+and a deterministic smoke evaluation that reports real parser results instead of placeholder metrics.
 
 ## Local development
 
@@ -75,6 +76,27 @@ Invoke-RestMethod `
 The investigator reads GitHub's community profile, repository root, workflow directory, and README.
 It reports documentation, engineering, and learning-friendliness scores together with the source URL
 and fetch time for every claim. Repository content is treated as untrusted data and is never executed.
+
+## Contribution issues and feedback
+
+OpenScout refreshes a repository's open issues before recommending a task. Pull requests, assigned
+work, and locked discussions are excluded; labels, description completeness, discussion size, and
+risk labels produce a bounded difficulty estimate.
+
+```powershell
+Invoke-RestMethod `
+  -Uri "http://127.0.0.1:8000/api/v1/repos/fastapi/fastapi/issues?limit=5"
+```
+
+User feedback is accepted through `POST /api/v1/feedback`. The web app preserves saved repositories
+on the current device even when the feedback API is temporarily unavailable.
+
+## Evaluation
+
+`GET /api/v1/evals/summary` and `POST /api/v1/evals/run` execute the versioned deterministic smoke
+set and return its actual constraint-parsing accuracy, complete-case pass rate, and failure samples.
+This is deliberately a small engineering gate, not a substitute for the planned 100-150 case human
+relevance dataset.
 
 ## Database migration
 
