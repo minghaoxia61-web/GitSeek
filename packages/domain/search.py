@@ -41,6 +41,17 @@ class Recommendation(BaseModel):
     score_breakdown: dict[str, float]
     reasons: list[str]
     risks: list[str]
+    retrieval_sources: list[Literal["local_index", "github_live"]] = Field(
+        default_factory=list
+    )
+    data_fetched_at: datetime | None = None
+
+
+class RetrievalSummary(BaseModel):
+    local_candidates: int = 0
+    github_candidates: int = 0
+    github_status: Literal["live", "unavailable"] = "live"
+    index_freshest_at: datetime | None = None
 
 
 class SearchResponse(BaseModel):
@@ -52,3 +63,4 @@ class SearchResponse(BaseModel):
     eligible_candidate_count: int
     ranking_version: str
     results: list[Recommendation]
+    retrieval: RetrievalSummary = Field(default_factory=RetrievalSummary)

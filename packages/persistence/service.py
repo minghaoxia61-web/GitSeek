@@ -110,6 +110,10 @@ class ProductPersistence:
                             "constraint_match": result.constraint_match,
                             "reasons": result.reasons,
                             "risks": result.risks,
+                            "retrieval_sources": result.retrieval_sources,
+                            "data_fetched_at": result.data_fetched_at.isoformat()
+                            if result.data_fetched_at
+                            else None,
                         },
                     )
                 )

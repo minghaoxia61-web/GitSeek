@@ -63,9 +63,12 @@ Invoke-RestMethod `
   -Body $body
 ```
 
-This baseline deliberately ranks only repository metadata. Every result warns that README, tests,
-and contribution guidance have not yet been verified; those claims will be added only after the
-deep-investigation milestone.
+Search now merges the synchronized repository index with GitHub's live repository search. PostgreSQL
+uses a generated full-text document with a GIN index; SQLite keeps a portable substring fallback for
+tests. Every recommendation reports whether it came from the local index, GitHub live search, or
+both, and includes the data fetch time. If GitHub is rate-limited, indexed matches remain available.
+
+Index readiness and freshness are available through `GET /api/v1/index/status`.
 
 ## Repository investigation
 

@@ -22,16 +22,21 @@ and finally bounded LLM assistance.
 
 ## Metadata recommendation baseline
 
-The first searchable vertical slice uses a deterministic pipeline:
+The searchable vertical slice uses a deterministic hybrid pipeline:
 
 ```text
-Chinese query -> rule-based constraints -> GitHub query -> hard filters -> metadata score -> Top 10
+Chinese query -> rule-based constraints -> local full-text index + GitHub live search
+                                              |
+                                              v
+                                  merge/dedupe -> hard filters -> metadata score -> Top 10
 ```
 
 Language, license, archive state, and activity date are hard constraints. A candidate with missing
 or conflicting evidence is excluded instead of letting a soft relevance score override the user's
 request. The ranking score uses only fields returned by repository search and labels itself
-`metadata-baseline-v1`; it does not claim that README, tests, or contribution instructions exist.
+`hybrid-index-baseline-v1`; it does not claim that README, tests, or contribution instructions exist.
+Each result carries its retrieval sources and fetch time. When GitHub is unavailable or rate-limited,
+the same hard-filter and ranking path can operate on the synchronized index alone.
 
 ## On-demand repository investigation
 

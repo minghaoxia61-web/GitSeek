@@ -5,4 +5,5 @@ export const productSchema = {
   feedback: "feedback",
   savedRepositories: "saved_repositories",
   contributionIssues: "contribution_issues",
+  repositoryIndex: "repository_index",
 } as const;

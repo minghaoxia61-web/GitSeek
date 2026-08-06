@@ -56,7 +56,10 @@ async function ensureDatabase(env) {
       env.DB.prepare("CREATE TABLE IF NOT EXISTS saved_repositories (id INTEGER PRIMARY KEY AUTOINCREMENT, device_id TEXT NOT NULL, repository TEXT NOT NULL, saved_at TEXT NOT NULL, UNIQUE(device_id, repository))"),
       env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_saved_repositories_device ON saved_repositories(device_id, saved_at)"),
       env.DB.prepare("CREATE TABLE IF NOT EXISTS contribution_issues (id INTEGER PRIMARY KEY AUTOINCREMENT, repository TEXT NOT NULL, issue_number INTEGER NOT NULL, payload_json TEXT NOT NULL, fetched_at TEXT NOT NULL, UNIQUE(repository, issue_number))"),
-      env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_contribution_issues_repository ON contribution_issues(repository, fetched_at)")
+      env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_contribution_issues_repository ON contribution_issues(repository, fetched_at)"),
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS repository_index (repository TEXT PRIMARY KEY, language TEXT, license_spdx TEXT, archived INTEGER NOT NULL DEFAULT 0, pushed_at TEXT, search_text TEXT NOT NULL, payload_json TEXT NOT NULL, fetched_at TEXT NOT NULL)"),
+      env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_repository_index_filters ON repository_index(language, archived, license_spdx, pushed_at)"),
+      env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_repository_index_freshness ON repository_index(fetched_at)")
     ]);
   }
   await databaseReady;
@@ -75,8 +78,28 @@ async function persistSearch(env, payload, repositories) {
   for (const repository of repositories) {
     statements.push(env.DB.prepare("INSERT INTO repository_snapshots (repository, snapshot_json, fetched_at) VALUES (?, ?, ?)")
       .bind(repository.full_name, JSON.stringify(repository), now));
+    const searchText = [repository.name, repository.full_name, repository.description || "", ...(repository.topics || [])].join(" ").toLowerCase();
+    statements.push(env.DB.prepare("INSERT INTO repository_index (repository, language, license_spdx, archived, pushed_at, search_text, payload_json, fetched_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(repository) DO UPDATE SET language = excluded.language, license_spdx = excluded.license_spdx, archived = excluded.archived, pushed_at = excluded.pushed_at, search_text = excluded.search_text, payload_json = excluded.payload_json, fetched_at = excluded.fetched_at")
+      .bind(repository.full_name, repository.language || null, repository.license?.spdx_id || null, repository.archived ? 1 : 0, repository.pushed_at || null, searchText, JSON.stringify(repository), now));
   }
   await env.DB.batch(statements);
+}
+
+async function searchIndex(env, query, constraints) {
+  const result = await env.DB.prepare("SELECT payload_json, fetched_at FROM repository_index WHERE (language IS NULL OR lower(language) = 'python') AND (? = 0 OR archived = 0) AND (? = '' OR pushed_at > ?) ORDER BY pushed_at DESC LIMIT 300")
+    .bind(constraints.exclude_archived ? 1 : 0, constraints.pushed_after || "", constraints.pushed_after || "").all();
+  const terms = constraints.technologies.length
+    ? constraints.technologies.map((item) => item.toLowerCase())
+    : (query.match(/[A-Za-z][A-Za-z0-9.+#-]{2,}/g) || []).map((item) => item.toLowerCase()).filter((item) => !["github", "issue", "mit", "python", "windows"].includes(item)).slice(0, 4);
+  return (result.results || []).map((item) => ({ repo: JSON.parse(item.payload_json), fetchedAt: item.fetched_at })).filter((item) => {
+    if (constraints.licenses.length && !constraints.licenses.includes(item.repo.license?.spdx_id)) return false;
+    if (constraints.project_size === "small" && (item.repo.stargazers_count || 0) >= 5000) return false;
+    if (constraints.project_size === "medium" && ((item.repo.stargazers_count || 0) < 1000 || (item.repo.stargazers_count || 0) > 30000)) return false;
+    if (constraints.project_size === "large" && (item.repo.stargazers_count || 0) <= 10000) return false;
+    if (!terms.length) return true;
+    const corpus = [item.repo.name, item.repo.full_name, item.repo.description || "", ...(item.repo.topics || [])].join(" ").toLowerCase();
+    return terms.some((term) => corpus.includes(term));
+  });
 }
 
 async function listSaved(env, deviceId) {
@@ -152,8 +175,34 @@ async function searchRepositories(request, env) {
   if (constraints.project_size === "medium") queryParts.push("stars:1000..30000");
   if (constraints.project_size === "large") queryParts.push("stars:>10000");
   const githubQuery = queryParts.join(" ");
-  const payload = await github("/search/repositories", { q: githubQuery, per_page: 100, sort: "updated", order: "desc" });
-  const eligible = payload.items.filter((repo) => {
+  const indexed = await searchIndex(env, body.query, constraints);
+  let githubItems = [];
+  let githubTotal = 0;
+  let githubStatus = "live";
+  try {
+    const payload = await github("/search/repositories", { q: githubQuery, per_page: 100, sort: "updated", order: "desc" });
+    githubItems = payload.items;
+    githubTotal = payload.total_count;
+  } catch (error) {
+    if (!indexed.length) throw error;
+    githubStatus = "unavailable";
+  }
+  const candidates = new Map();
+  const sourceMap = new Map();
+  const fetchedAtMap = new Map();
+  for (const item of indexed) {
+    candidates.set(item.repo.full_name, item.repo);
+    sourceMap.set(item.repo.full_name, new Set(["local_index"]));
+    fetchedAtMap.set(item.repo.full_name, item.fetchedAt);
+  }
+  const liveFetchedAt = new Date().toISOString();
+  for (const repo of githubItems) {
+    candidates.set(repo.full_name, repo);
+    if (!sourceMap.has(repo.full_name)) sourceMap.set(repo.full_name, new Set());
+    sourceMap.get(repo.full_name).add("github_live");
+    fetchedAtMap.set(repo.full_name, liveFetchedAt);
+  }
+  const eligible = [...candidates.values()].filter((repo) => {
     if (repo.language && repo.language.toLowerCase() !== "python") return false;
     if (constraints.exclude_archived && repo.archived) return false;
     if (constraints.licenses.length && !constraints.licenses.includes(repo.license?.spdx_id)) return false;
@@ -161,14 +210,21 @@ async function searchRepositories(request, env) {
     return true;
   });
   const ranked = eligible.map((repo) => ({ repo, ...repositoryScore(repo, constraints) })).sort((a, b) => b.score - a.score).slice(0, body.limit || 10);
+  const freshestIndexedAt = indexed.map((item) => item.fetchedAt).sort().at(-1) || null;
   const responsePayload = {
     session_id: crypto.randomUUID(),
     query: body.query,
     generated_github_query: githubQuery,
     constraints,
-    source_total_count: payload.total_count,
+    source_total_count: githubTotal || indexed.length,
     eligible_candidate_count: eligible.length,
-    ranking_version: "public-worker-baseline-v2",
+    ranking_version: "public-hybrid-index-v1",
+    retrieval: {
+      local_candidates: indexed.length,
+      github_candidates: githubItems.length,
+      github_status: githubStatus,
+      index_freshest_at: freshestIndexedAt
+    },
     results: ranked.map((item, index) => {
       const repo = item.repo;
       const matches = { language: "MATCH", archived: "MATCH" };
@@ -195,11 +251,13 @@ async function searchRepositories(request, env) {
         constraint_match: matches,
         score_breakdown: Object.fromEntries(Object.entries(item.breakdown).map(([key, value]) => [key, Math.round(value * 10) / 10])),
         reasons,
-        risks
+        risks,
+        retrieval_sources: [...(sourceMap.get(repo.full_name) || [])].sort(),
+        data_fetched_at: fetchedAtMap.get(repo.full_name) || null
       };
     })
   };
-  await persistSearch(env, responsePayload, ranked.map((item) => item.repo));
+  await persistSearch(env, responsePayload, githubItems);
   return json(responsePayload);
 }
 
@@ -341,6 +399,16 @@ async function handleApi(request, url, env) {
   try {
     await ensureDatabase(env);
     if (url.pathname === "/health") return json({ status: "ok", service: "openscout-public" });
+    if (url.pathname === "/api/v1/index/status" && request.method === "GET") {
+      const totals = await env.DB.prepare("SELECT COUNT(*) AS repository_count, MAX(fetched_at) AS freshest_at FROM repository_index").first();
+      const snapshots = await env.DB.prepare("SELECT COUNT(*) AS snapshot_count FROM repository_snapshots").first();
+      return json({
+        repository_count: totals?.repository_count || 0,
+        snapshot_count: snapshots?.snapshot_count || 0,
+        freshest_at: totals?.freshest_at || null,
+        ready: (totals?.repository_count || 0) > 0
+      });
+    }
     if (url.pathname === "/api/v1/search" && request.method === "POST") return await searchRepositories(request, env);
     if (url.pathname === "/api/v1/evals/summary" || url.pathname === "/api/v1/evals/run") return evaluationSummary();
     if (url.pathname === "/api/v1/feedback" && request.method === "POST") {

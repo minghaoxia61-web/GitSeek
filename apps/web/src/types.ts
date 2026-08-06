@@ -14,6 +14,8 @@ export type Recommendation = {
   score_breakdown: Record<string, number>;
   reasons: string[];
   risks: string[];
+  retrieval_sources?: Array<"local_index" | "github_live">;
+  data_fetched_at?: string | null;
 };
 
 export type SearchResponse = {
@@ -35,6 +37,12 @@ export type SearchResponse = {
   eligible_candidate_count: number;
   ranking_version: string;
   results: Recommendation[];
+  retrieval?: {
+    local_candidates: number;
+    github_candidates: number;
+    github_status: "live" | "unavailable";
+    index_freshest_at: string | null;
+  };
 };
 
 export type ContributionIssue = {

@@ -256,7 +256,10 @@ function ResultCard({
         <div className="reason-row">{repo.reasons.slice(0, 3).map((reason) => <span key={reason}><i />{reason}</span>)}</div>
         <div className="risk-line"><b>需要留意</b><span>{repo.risks[0]}</span></div>
         <div className="result-footer">
-          <div className="evidence-links"><span>包含推荐依据与风险说明</span><span>仓库更新 {repo.pushed_at?.slice(0, 10)}</span></div>
+          <div className="evidence-links">
+            <span>{repo.retrieval_sources?.includes("github_live") ? "GitHub 实时" : "本地索引"}</span>
+            <span>仓库更新 {repo.pushed_at?.slice(0, 10)}</span>
+          </div>
           <button onClick={onDetail}>查看项目档案 <b>→</b></button>
         </div>
       </div>
@@ -298,12 +301,13 @@ function ResultsView({
         <div>
           <div className="kicker">搜索结果</div>
           <h1>发现 <em>{data.eligible_candidate_count}</em> 个符合条件的项目</h1>
-          <p>从 {formatNumber(data.source_total_count)} 个 GitHub 候选中完成硬过滤与证据评分。</p>
+          <p>从 {formatNumber(data.source_total_count)} 个候选中完成硬过滤与证据评分；实时结果与已同步索引会自动合并。</p>
         </div>
         <div className="run-stamp"><small>排序规则</small><b>{data.ranking_version}</b><span>可查看每条推荐的依据</span></div>
       </section>
 
       {fallback && <div className="notice"><Signal tone="amber" /><span>后端暂时不可用，当前展示经过校准的演示数据。启动 API 后重新搜索即可切换为实时结果。</span></div>}
+      {!fallback && data.retrieval?.github_status === "unavailable" && <div className="notice"><Signal tone="amber" /><span>GitHub 当前限流或暂不可用，本次结果来自已同步索引，页面已保留数据时间。</span></div>}
 
       <section className="query-record">
         <div><small>原始需求</small><p>“{data.query}”</p></div>
@@ -340,8 +344,9 @@ function ResultsView({
             ].map((row) => <div className="audit-row" key={row[0]}><Signal tone={row[2] as "green"} /><span>{row[0]}</span><b>{row[1]}</b></div>)}
           </article>
           <article className="panel confidence-card">
-            <div className="panel-title"><span>数据说明</span><small>当前结果</small></div>
-            <strong>高</strong><p>关键事实均来自近期 GitHub API；深度文档调查尚未运行。</p>
+            <div className="panel-title"><span>检索来源</span><small>当前结果</small></div>
+            <strong>{data.retrieval?.github_status === "unavailable" ? "索引" : "混合"}</strong>
+            <p>本地索引 {data.retrieval?.local_candidates ?? 0} 个，GitHub 实时 {data.retrieval?.github_candidates ?? data.results.length} 个；相同仓库已自动去重。</p>
             <div className="confidence-scale"><i /><i /><i className="active" /></div>
           </article>
           <article className="panel compare-hint">

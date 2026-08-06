@@ -71,7 +71,9 @@ def test_search_endpoint_returns_explainable_baseline() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["ranking_version"] == "metadata-baseline-v1"
+    assert payload["ranking_version"] == "hybrid-index-baseline-v1"
+    assert payload["retrieval"]["github_candidates"] == 1
+    assert payload["results"][0]["retrieval_sources"] == ["github_live"]
     assert payload["eligible_candidate_count"] == 1
     assert payload["results"][0]["full_name"] == "example/fastapi-demo"
     assert payload["results"][0]["constraint_match"]["license"] == "MATCH"
