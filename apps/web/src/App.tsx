@@ -37,6 +37,15 @@ const scoreLabels: Record<string, string> = {
   license: "许可证",
 };
 
+function getDeviceId() {
+  const key = "openscout:device-id";
+  const existing = localStorage.getItem(key);
+  if (existing) return existing;
+  const created = crypto.randomUUID();
+  localStorage.setItem(key, created);
+  return created;
+}
+
 function ScoreDial({ value, small = false }: { value: number; small?: boolean }) {
   return (
     <div
@@ -598,7 +607,9 @@ export default function App() {
   }
 
   async function submitFeedback(action: "helpful" | "not_relevant" | "saved" | "opened_issue") {
+    let deviceId: string | null = null;
     try {
+      deviceId = getDeviceId();
       const feedbackLog = JSON.parse(localStorage.getItem("openscout:feedback") ?? "[]") as Array<Record<string, string>>;
       localStorage.setItem("openscout:feedback", JSON.stringify([...feedbackLog.slice(-99), { repository: selectedRepo.full_name, action, query: data.query, createdAt: new Date().toISOString() }]));
       if (action === "saved") {
@@ -609,11 +620,25 @@ export default function App() {
       // Storage can be unavailable in a locked-down browser; API feedback still proceeds.
     }
     try {
-      await fetch("/api/v1/feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repository: selectedRepo.full_name, action, query: data.query }),
-      });
+      const requests = [fetch("/api/v1/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            repository: selectedRepo.full_name,
+            action,
+            query: data.query,
+            session_id: fallback ? null : data.session_id,
+            device_id: deviceId,
+          }),
+        })];
+      if (action === "saved" && deviceId) {
+        requests.push(fetch("/api/v1/saved", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ device_id: deviceId, repository: selectedRepo.full_name }),
+        }));
+      }
+      await Promise.all(requests);
     } catch {
       // Device-local save and immediate UI feedback still work when the API is offline.
     }

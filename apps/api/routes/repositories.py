@@ -1,8 +1,9 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
-from apps.api.dependencies import get_github_client
+from apps.api.dependencies import get_db_session, get_github_client
 from packages.contribution import ContributionIssueService
 from packages.domain.contribution import ContributionIssueResponse
 from packages.domain.investigation import RepositoryInvestigation
@@ -13,6 +14,7 @@ from packages.github_client import (
     GitHubRateLimitError,
 )
 from packages.investigation import RepositoryInvestigator
+from packages.persistence import ProductPersistence
 
 router = APIRouter(prefix="/api/v1/repos", tags=["repositories"])
 
@@ -22,14 +24,17 @@ async def recommend_contribution_issues(
     owner: str,
     repo: str,
     client: Annotated[GitHubClient, Depends(get_github_client)],
+    session: Annotated[Session, Depends(get_db_session)],
     limit: int = 5,
 ) -> ContributionIssueResponse:
     try:
-        return await ContributionIssueService(client).recommend(
+        response = await ContributionIssueService(client).recommend(
             owner,
             repo,
             limit=max(1, min(limit, 10)),
         )
+        ProductPersistence(session).save_issues(response)
+        return response
     except GitHubNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Repository not found") from exc
     except GitHubRateLimitError as exc:

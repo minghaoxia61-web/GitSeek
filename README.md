@@ -16,6 +16,9 @@ The repository currently contains the first end-to-end product slice:
 
 The current V1 also includes contribution-Issue screening, device-local saves, feedback capture,
 and a deterministic smoke evaluation that reports real parser results instead of placeholder metrics.
+Search sessions, recommendation evidence, repository snapshots, refreshed Issues, feedback, and
+saved repositories now have database-backed persistence. The public Sites build uses D1 for the same
+product activity, while the FastAPI stack uses PostgreSQL.
 
 ## Local development
 
@@ -121,6 +124,16 @@ Add a GitHub token to `.env`, apply the migration, then run:
 
 Each page contains at most 100 repositories. Re-running the command updates existing rows instead
 of creating duplicates.
+
+To build the initial Python index across multiple popularity bands after configuring a GitHub token:
+
+```powershell
+.\.venv\Scripts\python -m workers.sync.seed --target 3000 --pages-per-query 5
+```
+
+The seed job is resumable: repository rows are upserted, while each refresh appends an immutable
+metrics snapshot. A GitHub token is strongly recommended because unauthenticated search limits are
+too low for the initial 3,000-repository import.
 
 ## Tests and lint
 

@@ -1,5 +1,8 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 
+from sqlalchemy.orm import Session
+
+from packages.database.session import get_session_factory
 from packages.domain.settings import get_settings
 from packages.github_client import GitHubClient
 
@@ -13,3 +16,7 @@ async def get_github_client() -> AsyncIterator[GitHubClient]:
     ) as client:
         yield client
 
+
+def get_db_session() -> Iterator[Session]:
+    with get_session_factory()() as session:
+        yield session

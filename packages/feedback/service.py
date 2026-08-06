@@ -1,6 +1,5 @@
 from collections import Counter
 from datetime import UTC, datetime
-from uuid import uuid4
 
 from packages.domain.feedback import FeedbackReceipt, FeedbackRequest, FeedbackSummary
 
@@ -11,7 +10,7 @@ class FeedbackStore:
 
     def add(self, request: FeedbackRequest) -> FeedbackReceipt:
         receipt = FeedbackReceipt(
-            id=str(uuid4()),
+            id=request.id,
             repository=request.repository,
             action=request.action,
             received_at=datetime.now(UTC),

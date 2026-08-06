@@ -1,4 +1,4 @@
-import { copyFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { extname, relative, resolve, sep } from "node:path";
 
 const contentTypes = {
@@ -37,6 +37,52 @@ function json(payload, status = 200) {
     status,
     headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }
   });
+}
+
+let databaseReady;
+
+async function ensureDatabase(env) {
+  if (!env.DB) throw new Error("DB_UNAVAILABLE");
+  if (!databaseReady) {
+    databaseReady = env.DB.batch([
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS search_sessions (id TEXT PRIMARY KEY, query TEXT NOT NULL, constraints_json TEXT NOT NULL, github_query TEXT NOT NULL, source_total_count INTEGER NOT NULL DEFAULT 0, eligible_candidate_count INTEGER NOT NULL DEFAULT 0, ranking_version TEXT NOT NULL, created_at TEXT NOT NULL)"),
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS recommendations (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, repository TEXT NOT NULL, rank INTEGER NOT NULL, score REAL NOT NULL, payload_json TEXT NOT NULL, FOREIGN KEY (session_id) REFERENCES search_sessions(id) ON DELETE CASCADE, UNIQUE(session_id, rank))"),
+      env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_recommendations_session_id ON recommendations(session_id)"),
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS repository_snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, repository TEXT NOT NULL, snapshot_json TEXT NOT NULL, fetched_at TEXT NOT NULL)"),
+      env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_repository_snapshots_repository ON repository_snapshots(repository, fetched_at)"),
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS feedback (id TEXT PRIMARY KEY, session_id TEXT, repository TEXT NOT NULL, action TEXT NOT NULL, reason TEXT, query TEXT, device_id TEXT, received_at TEXT NOT NULL)"),
+      env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_feedback_action ON feedback(action)"),
+      env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_feedback_device_id ON feedback(device_id)"),
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS saved_repositories (id INTEGER PRIMARY KEY AUTOINCREMENT, device_id TEXT NOT NULL, repository TEXT NOT NULL, saved_at TEXT NOT NULL, UNIQUE(device_id, repository))"),
+      env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_saved_repositories_device ON saved_repositories(device_id, saved_at)"),
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS contribution_issues (id INTEGER PRIMARY KEY AUTOINCREMENT, repository TEXT NOT NULL, issue_number INTEGER NOT NULL, payload_json TEXT NOT NULL, fetched_at TEXT NOT NULL, UNIQUE(repository, issue_number))"),
+      env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_contribution_issues_repository ON contribution_issues(repository, fetched_at)")
+    ]);
+  }
+  await databaseReady;
+}
+
+async function persistSearch(env, payload, repositories) {
+  const now = new Date().toISOString();
+  const statements = [
+    env.DB.prepare("INSERT INTO search_sessions (id, query, constraints_json, github_query, source_total_count, eligible_candidate_count, ranking_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(payload.session_id, payload.query, JSON.stringify(payload.constraints), payload.generated_github_query, payload.source_total_count, payload.eligible_candidate_count, payload.ranking_version, now)
+  ];
+  for (const result of payload.results) {
+    statements.push(env.DB.prepare("INSERT INTO recommendations (session_id, repository, rank, score, payload_json) VALUES (?, ?, ?, ?, ?)")
+      .bind(payload.session_id, result.full_name, result.rank, result.score, JSON.stringify(result)));
+  }
+  for (const repository of repositories) {
+    statements.push(env.DB.prepare("INSERT INTO repository_snapshots (repository, snapshot_json, fetched_at) VALUES (?, ?, ?)")
+      .bind(repository.full_name, JSON.stringify(repository), now));
+  }
+  await env.DB.batch(statements);
+}
+
+async function listSaved(env, deviceId) {
+  const result = await env.DB.prepare("SELECT repository FROM saved_repositories WHERE device_id = ? ORDER BY saved_at DESC")
+    .bind(deviceId).all();
+  return (result.results || []).map((item) => item.repository);
 }
 
 async function github(path, params) {
@@ -95,7 +141,7 @@ function repositoryScore(repo, constraints) {
   return { score: Object.values(breakdown).reduce((sum, value) => sum + value, 0), breakdown };
 }
 
-async function searchRepositories(request) {
+async function searchRepositories(request, env) {
   const body = await request.json();
   const constraints = parseConstraints(body.query, body);
   const terms = constraints.technologies.length ? constraints.technologies : ((body.query.match(/[A-Za-z][A-Za-z0-9.+#-]{2,}/g) || []).slice(0, 3));
@@ -115,7 +161,7 @@ async function searchRepositories(request) {
     return true;
   });
   const ranked = eligible.map((repo) => ({ repo, ...repositoryScore(repo, constraints) })).sort((a, b) => b.score - a.score).slice(0, body.limit || 10);
-  return json({
+  const responsePayload = {
     session_id: crypto.randomUUID(),
     query: body.query,
     generated_github_query: githubQuery,
@@ -152,7 +198,9 @@ async function searchRepositories(request) {
         risks
       };
     })
-  });
+  };
+  await persistSearch(env, responsePayload, ranked.map((item) => item.repo));
+  return json(responsePayload);
 }
 
 function safeGithub(path, params, fallback) {
@@ -219,7 +267,7 @@ async function investigateRepository(owner, repo) {
   });
 }
 
-async function recommendIssues(owner, repo, url) {
+async function recommendIssues(owner, repo, url, env) {
   const payload = await github("/repos/" + owner + "/" + repo + "/issues", { state: "open", per_page: 100, sort: "updated" });
   const limit = Math.max(1, Math.min(Number(url.searchParams.get("limit") || 5), 10));
   const issues = payload.filter((item) => !item.pull_request && !item.assignees?.length && !item.locked).map((item) => {
@@ -239,7 +287,12 @@ async function recommendIssues(owner, repo, url) {
     if (risky) risks.push("标签表明任务可能涉及较高风险");
     return { number: item.number, title: item.title, html_url: item.html_url, labels, comments: item.comments, updated_at: item.updated_at, difficulty: beginner && bodyLength >= 300 && item.comments <= 5 ? "easy" : risky || item.comments >= 15 ? "hard" : "medium", score: Math.max(0, Math.min(Math.round(score), 100)), reasons, risks };
   }).sort((a, b) => b.score - a.score).slice(0, limit);
-  return json({ full_name: owner + "/" + repo, fetched_at: new Date().toISOString(), issues, limitations: ["难度来自标签、描述长度和讨论规模等静态信号", "开始贡献前仍需确认没有关联 Pull Request"] });
+  const responsePayload = { full_name: owner + "/" + repo, fetched_at: new Date().toISOString(), issues, limitations: ["难度来自标签、描述长度和讨论规模等静态信号", "开始贡献前仍需确认没有关联 Pull Request"] };
+  if (issues.length) {
+    await env.DB.batch(issues.map((issue) => env.DB.prepare("INSERT INTO contribution_issues (repository, issue_number, payload_json, fetched_at) VALUES (?, ?, ?, ?) ON CONFLICT(repository, issue_number) DO UPDATE SET payload_json = excluded.payload_json, fetched_at = excluded.fetched_at")
+      .bind(responsePayload.full_name, issue.number, JSON.stringify(issue), responsePayload.fetched_at)));
+  }
+  return json(responsePayload);
 }
 
 function evaluationSummary() {
@@ -284,33 +337,64 @@ function evaluationSummary() {
   });
 }
 
-async function handleApi(request, url) {
+async function handleApi(request, url, env) {
   try {
+    await ensureDatabase(env);
     if (url.pathname === "/health") return json({ status: "ok", service: "openscout-public" });
-    if (url.pathname === "/api/v1/search" && request.method === "POST") return await searchRepositories(request);
+    if (url.pathname === "/api/v1/search" && request.method === "POST") return await searchRepositories(request, env);
     if (url.pathname === "/api/v1/evals/summary" || url.pathname === "/api/v1/evals/run") return evaluationSummary();
     if (url.pathname === "/api/v1/feedback" && request.method === "POST") {
       const body = await request.json();
-      return json({ id: crypto.randomUUID(), repository: body.repository, action: body.action, received_at: new Date().toISOString() }, 201);
+      const id = body.id || crypto.randomUUID();
+      const receivedAt = new Date().toISOString();
+      await env.DB.prepare("INSERT INTO feedback (id, session_id, repository, action, reason, query, device_id, received_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        .bind(id, body.session_id || null, body.repository, body.action, body.reason || null, body.query || null, body.device_id || null, receivedAt).run();
+      return json({ id, repository: body.repository, action: body.action, received_at: receivedAt }, 201);
+    }
+    if (url.pathname === "/api/v1/feedback/summary" && request.method === "GET") {
+      const result = await env.DB.prepare("SELECT action, COUNT(*) AS count FROM feedback GROUP BY action").all();
+      const byAction = Object.fromEntries((result.results || []).map((item) => [item.action, item.count]));
+      return json({ total: Object.values(byAction).reduce((sum, count) => sum + count, 0), by_action: byAction });
+    }
+    if (url.pathname === "/api/v1/saved" && request.method === "GET") {
+      const deviceId = url.searchParams.get("device_id");
+      if (!deviceId) return json({ detail: "device_id is required" }, 422);
+      return json({ device_id: deviceId, repositories: await listSaved(env, deviceId) });
+    }
+    if (url.pathname === "/api/v1/saved" && request.method === "POST") {
+      const body = await request.json();
+      await env.DB.prepare("INSERT INTO saved_repositories (device_id, repository, saved_at) VALUES (?, ?, ?) ON CONFLICT(device_id, repository) DO NOTHING")
+        .bind(body.device_id, body.repository, new Date().toISOString()).run();
+      return json({ device_id: body.device_id, repositories: await listSaved(env, body.device_id) }, 201);
+    }
+    const savedMatch = url.pathname.match(/^\\/api\\/v1\\/saved\\/([^/]+)\\/([^/]+)$/);
+    if (savedMatch && request.method === "DELETE") {
+      const deviceId = url.searchParams.get("device_id");
+      if (!deviceId) return json({ detail: "device_id is required" }, 422);
+      const repository = decodeURIComponent(savedMatch[1]) + "/" + decodeURIComponent(savedMatch[2]);
+      await env.DB.prepare("DELETE FROM saved_repositories WHERE device_id = ? AND repository = ?")
+        .bind(deviceId, repository).run();
+      return json({ device_id: deviceId, repositories: await listSaved(env, deviceId) });
     }
     const match = url.pathname.match(/^\\/api\\/v1\\/repos\\/([^/]+)\\/([^/]+)\\/(investigate|issues)$/);
     if (match) {
       const owner = decodeURIComponent(match[1]);
       const repo = decodeURIComponent(match[2]);
-      return match[3] === "investigate" ? investigateRepository(owner, repo) : recommendIssues(owner, repo, url);
+      return match[3] === "investigate" ? investigateRepository(owner, repo) : recommendIssues(owner, repo, url, env);
     }
     return json({ detail: "API route not found" }, 404);
   } catch (error) {
     if (error.message === "NOT_FOUND") return json({ detail: "GitHub resource not found" }, 404);
     if (error.message === "RATE_LIMIT") return json({ detail: "GitHub public API rate limit reached; please try again later" }, 429);
+    if (error.message === "DB_UNAVAILABLE") return json({ detail: "Persistent storage is unavailable" }, 503);
     return json({ detail: "GitHub request failed" }, 502);
   }
 }
 
 export default {
-  async fetch(request) {
+  async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname.startsWith("/api/") || url.pathname === "/health") return handleApi(request, url);
+    if (url.pathname.startsWith("/api/") || url.pathname === "/health") return handleApi(request, url, env);
 
     const requestedAsset = assets[url.pathname];
     const asset = requestedAsset ?? assets["/index.html"];
@@ -332,3 +416,4 @@ await mkdir("dist/server", { recursive: true });
 await mkdir("dist/.openai", { recursive: true });
 await writeFile("dist/server/index.js", worker, "utf8");
 await copyFile(".openai/hosting.json", "dist/.openai/hosting.json");
+await cp("drizzle", "dist/.openai/drizzle", { recursive: true });

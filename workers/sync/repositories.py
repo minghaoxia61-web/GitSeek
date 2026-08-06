@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from packages.database import create_db_engine, create_session_factory
-from packages.domain.models import Repository
+from packages.domain.models import Repository, RepositorySnapshot
 from packages.domain.models.base import utc_now
 from packages.domain.settings import get_settings
 from packages.github_client import GitHubClient
@@ -41,6 +41,29 @@ class RepositorySynchronizer:
                 created += int(was_created)
                 updated += int(not was_created)
 
+            self._session.flush()
+            records = {
+                record.github_id: record
+                for record in self._session.scalars(
+                    select(Repository).where(
+                        Repository.github_id.in_([item.id for item in page.result.items])
+                    )
+                )
+            }
+            for item in page.result.items:
+                self._session.add(
+                    RepositorySnapshot(
+                        repo_id=records[item.id].id,
+                        metrics_json={
+                            "stars": item.stargazers_count,
+                            "forks": item.forks_count,
+                            "open_issues": item.open_issues_count,
+                            "archived": item.archived,
+                            "pushed_at": item.pushed_at.isoformat() if item.pushed_at else None,
+                        },
+                    )
+                )
+
         self._session.commit()
         return SyncStats(fetched=fetched, created=created, updated=updated)
 
@@ -70,7 +93,7 @@ class RepositorySynchronizer:
                 github_updated_at=item.updated_at,
                 fetched_at=utc_now(),
                 source_etag=source_etag,
-                raw_metadata={},
+                raw_metadata=item.model_dump(mode="json"),
             )
             self._session.add(repository)
         else:
@@ -91,6 +114,7 @@ class RepositorySynchronizer:
             repository.github_updated_at = item.updated_at
             repository.fetched_at = utc_now()
             repository.source_etag = source_etag
+            repository.raw_metadata = item.model_dump(mode="json")
 
         return was_created
 
@@ -123,4 +147,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

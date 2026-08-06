@@ -9,7 +9,16 @@ def test_repository_schema_can_be_created_in_memory() -> None:
     Base.metadata.create_all(engine)
 
     table_names = set(Base.metadata.tables)
-    assert table_names == {"repositories", "repository_features"}
+    assert table_names == {
+        "contribution_issues",
+        "feedback",
+        "recommendations",
+        "repositories",
+        "repository_features",
+        "repository_snapshots",
+        "saved_repositories",
+        "search_sessions",
+    }
 
 
 def test_feature_evidence_fields_are_nullable() -> None:
@@ -19,4 +28,3 @@ def test_feature_evidence_fields_are_nullable() -> None:
     assert RepositoryFeature.__table__.c.has_tests.nullable is True
     assert "FOREIGN KEY(repo_id)" in compiled
     assert Repository.__table__.c.github_id.unique is True
-

@@ -7,6 +7,10 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY index.html tsconfig.json vite.config.ts ./
+COPY scripts ./scripts
+COPY .openai ./.openai
+COPY drizzle ./drizzle
+COPY db ./db
 COPY src ./src
 COPY public ./public
 RUN pnpm run build
@@ -16,4 +20,3 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 
 EXPOSE 80
-

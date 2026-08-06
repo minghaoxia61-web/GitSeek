@@ -16,4 +16,4 @@ RUN python -m pip install --no-cache-dir .
 
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "python -m alembic upgrade head && python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 8000"]

@@ -7,6 +7,7 @@ from apps.api.routes.evaluations import router as evaluations_router
 from apps.api.routes.feedback import router as feedback_router
 from apps.api.routes.health import router as health_router
 from apps.api.routes.repositories import router as repositories_router
+from apps.api.routes.saved import router as saved_router
 from apps.api.routes.search import router as search_router
 from packages.domain.settings import get_settings
 
@@ -27,6 +28,7 @@ def create_app() -> FastAPI:
     )
     application.include_router(health_router)
     application.include_router(search_router)
+    application.include_router(saved_router)
     application.include_router(repositories_router)
     application.include_router(feedback_router)
     application.include_router(evaluations_router)
