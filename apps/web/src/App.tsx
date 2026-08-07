@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { demoResponse } from "./mockData";
-import type { ContributionIssue, EvaluationSummary, Recommendation, RepositoryInvestigation, SearchResponse, View } from "./types";
+import type { AgentRunResponse, ContributionIssue, EvaluationSummary, Recommendation, RepositoryInvestigation, SearchResponse, View } from "./types";
 
 type SearchOptions = {
   purpose: "learning" | "contribution";
@@ -199,7 +199,7 @@ function DiscoverView({ onSearch }: { onSearch: (query: string, options: SearchO
             <button type="button" className="text-button" onClick={() => setAdvanced(!advanced)}>{advanced ? "收起条件" : "高级约束"} <span>{advanced ? "−" : "+"}</span></button>
             <button className="primary-button" disabled={loading}>{loading ? <><i className="spinner" /> 正在搜索</> : <>查看候选项目 <b>→</b></>}</button>
           </div>
-          {loading && <div className="search-progress" aria-live="polite"><span className="active">解析条件</span><span className="active">搜索 GitHub</span><span>硬条件过滤</span><span>生成推荐</span></div>}
+          {loading && <div className="search-progress" aria-live="polite"><span className="active">解析条件</span><span className="active">混合检索</span><span className="active">深度调查</span><span>证据验证</span></div>}
         </form>
       </section>
 
@@ -275,6 +275,7 @@ function ResultCard({
 
 function ResultsView({
   data,
+  agentRun,
   compare,
   toggleCompare,
   onDetail,
@@ -282,6 +283,7 @@ function ResultsView({
   fallback,
 }: {
   data: SearchResponse;
+  agentRun: AgentRunResponse | null;
   compare: string[];
   toggleCompare: (name: string) => void;
   onDetail: (repo: Recommendation) => void;
@@ -334,6 +336,11 @@ function ResultsView({
         </section>
 
         <aside className="evidence-rail">
+          {agentRun && <article className="panel">
+            <div className="panel-title"><span>Agent 执行</span><small>{agentRun.status === "succeeded" ? "完整完成" : "部分降级"}</small></div>
+            {agentRun.steps.map((step) => <div className="audit-row" key={step.node}><Signal tone={step.status === "completed" ? "green" : "amber"} /><span>{step.summary}</span><b>{step.duration_ms}ms</b></div>)}
+            <p className="panel-note">证据支持率 {agentRun.verification.length ? Math.round(agentRun.verification.reduce((sum, item) => sum + item.support_ratio, 0) / agentRun.verification.length * 100) : 0}% · 最多重试 {agentRun.retry_count} 次</p>
+          </article>}
           <article className="panel">
             <div className="panel-title"><span>已应用的条件</span><small>搜索范围</small></div>
             {[
@@ -535,43 +542,61 @@ export default function App() {
   const [issueStatus, setIssueStatus] = useState<"loading" | "ready" | "unavailable">("unavailable");
   const [compare, setCompare] = useState<string[]>([]);
   const [fallback, setFallback] = useState(false);
+  const [agentRun, setAgentRun] = useState<AgentRunResponse | null>(null);
 
   async function search(query: string, options: SearchOptions) {
     const recentDate = new Date();
     recentDate.setDate(recentDate.getDate() - 183);
+    const requestBody = {
+      query,
+      limit: 10,
+      purpose: options.purpose,
+      weekly_hours: options.weeklyHours,
+      platform: options.platform,
+      project_size: options.projectSize,
+      licenses: options.licenses.length ? options.licenses : null,
+      pushed_after: options.recentOnly ? recentDate.toISOString().slice(0, 10) : null,
+      investigate_limit: 2,
+    };
     try {
-      const response = await fetch("/api/v1/search", {
+      const response = await fetch("/api/v1/agent/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query,
-          limit: 10,
-          purpose: options.purpose,
-          weekly_hours: options.weeklyHours,
-          platform: options.platform,
-          project_size: options.projectSize,
-          licenses: options.licenses.length ? options.licenses : null,
-          pushed_after: options.recentOnly ? recentDate.toISOString().slice(0, 10) : null,
-        }),
+        body: JSON.stringify(requestBody),
       });
-      if (!response.ok) throw new Error("Search API unavailable");
-      setData(await response.json() as SearchResponse);
+      if (!response.ok) throw new Error("Agent API unavailable");
+      const run = await response.json() as AgentRunResponse;
+      setAgentRun(run);
+      setData(run.search);
       setFallback(false);
     } catch {
-      setData({
-        ...demoResponse,
-        query,
-        constraints: {
-          ...demoResponse.constraints,
-          purpose: options.purpose,
-          weekly_hours: options.weeklyHours,
-          platform: options.platform,
-          project_size: options.projectSize,
-          licenses: options.licenses,
-          pushed_after: options.recentOnly ? recentDate.toISOString().slice(0, 10) : null,
-        },
-      });
-      setFallback(true);
+      try {
+        const response = await fetch("/api/v1/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+        if (!response.ok) throw new Error("Search API unavailable");
+        setData(await response.json() as SearchResponse);
+        setAgentRun(null);
+        setFallback(false);
+      } catch {
+        setData({
+          ...demoResponse,
+          query,
+          constraints: {
+            ...demoResponse.constraints,
+            purpose: options.purpose,
+            weekly_hours: options.weeklyHours,
+            platform: options.platform,
+            project_size: options.projectSize,
+            licenses: options.licenses,
+            pushed_after: options.recentOnly ? recentDate.toISOString().slice(0, 10) : null,
+          },
+        });
+        setAgentRun(null);
+        setFallback(true);
+      }
     }
     setView("results");
   }
@@ -654,7 +679,7 @@ export default function App() {
   return (
     <Shell view={view} setView={setView} compareCount={compare.length}>
       {view === "discover" && <DiscoverView onSearch={search} />}
-      {view === "results" && <ResultsView data={data} compare={compare} toggleCompare={toggleCompare} fallback={fallback} onNewSearch={() => setView("discover")} onDetail={openDetail} />}
+      {view === "results" && <ResultsView data={data} agentRun={agentRun} compare={compare} toggleCompare={toggleCompare} fallback={fallback} onNewSearch={() => setView("discover")} onDetail={openDetail} />}
       {view === "detail" && <DetailView repo={selectedRepo} investigation={investigation} status={investigationStatus} issues={issues} issueStatus={issueStatus} onBack={() => setView("results")} onCompare={() => toggleCompare(selectedRepo.full_name)} onFeedback={submitFeedback} />}
       {view === "compare" && <CompareView repos={compareRepos} onDiscover={() => setView("results")} onDetail={openDetail} onRemove={toggleCompare} />}
       {view === "evals" && <EvalsView />}

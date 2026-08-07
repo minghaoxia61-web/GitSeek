@@ -59,7 +59,11 @@ async function ensureDatabase(env) {
       env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_contribution_issues_repository ON contribution_issues(repository, fetched_at)"),
       env.DB.prepare("CREATE TABLE IF NOT EXISTS repository_index (repository TEXT PRIMARY KEY, language TEXT, license_spdx TEXT, archived INTEGER NOT NULL DEFAULT 0, pushed_at TEXT, search_text TEXT NOT NULL, payload_json TEXT NOT NULL, fetched_at TEXT NOT NULL)"),
       env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_repository_index_filters ON repository_index(language, archived, license_spdx, pushed_at)"),
-      env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_repository_index_freshness ON repository_index(fetched_at)")
+      env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_repository_index_freshness ON repository_index(fetched_at)"),
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS agent_runs (id TEXT PRIMARY KEY, search_session_id TEXT, status TEXT NOT NULL, request_json TEXT NOT NULL, result_json TEXT NOT NULL, retry_count INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, completed_at TEXT NOT NULL)"),
+      env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_agent_runs_status ON agent_runs(status, created_at)"),
+      env.DB.prepare("CREATE TABLE IF NOT EXISTS agent_steps (id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, node TEXT NOT NULL, status TEXT NOT NULL, duration_ms INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 1, summary TEXT NOT NULL, started_at TEXT NOT NULL, completed_at TEXT NOT NULL, FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE)"),
+      env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_agent_steps_run_id ON agent_steps(run_id)")
     ]);
   }
   await databaseReady;
@@ -353,6 +357,131 @@ async function recommendIssues(owner, repo, url, env) {
   return json(responsePayload);
 }
 
+function createAgentStep(node, startedAt, startedClock, summary, status = "completed", attempts = 1) {
+  const completedAt = new Date().toISOString();
+  return {
+    node,
+    status,
+    started_at: startedAt,
+    completed_at: completedAt,
+    duration_ms: Math.max(0, Math.round(performance.now() - startedClock)),
+    attempts,
+    summary
+  };
+}
+
+async function investigateWithRetry(fullName) {
+  const [owner, repo] = fullName.split("/");
+  for (const attempt of [1, 2]) {
+    try {
+      const response = await investigateRepository(owner, repo);
+      return { investigation: await response.json(), attempts: attempt };
+    } catch (error) {
+      if (error.message === "RATE_LIMIT" || attempt === 2) return { investigation: null, attempts: attempt };
+    }
+  }
+  return { investigation: null, attempts: 2 };
+}
+
+function verifyAgentResult(result, investigation) {
+  const conflicts = Object.entries(result.constraint_match || {}).filter(([, value]) => value !== "MATCH").map(([key]) => key);
+  let checked = (result.reasons || []).length + Object.keys(result.constraint_match || {}).length;
+  let supported = (result.reasons || []).length + Object.values(result.constraint_match || {}).filter((value) => value === "MATCH").length;
+  const evidence = investigation?.evidence || [];
+  checked += evidence.length;
+  const supportedEvidence = evidence.filter((item) => item.source_url);
+  supported += supportedEvidence.length;
+  if (investigation && investigation.full_name !== result.full_name) conflicts.push("repository_identity");
+  const ratio = checked ? Math.round(supported / checked * 1000) / 1000 : 0;
+  const confidence = conflicts.length || ratio < 0.7 ? "low" : ratio < 0.9 || !investigation || investigation.confidence === "low" ? "medium" : "high";
+  return {
+    full_name: result.full_name,
+    checked_claims: checked,
+    supported_claims: supported,
+    conflicts,
+    evidence_ids: supportedEvidence.map((item) => item.id),
+    support_ratio: ratio,
+    confidence
+  };
+}
+
+async function persistAgentRun(env, requestBody, responsePayload) {
+  const compactResult = {
+    search_plan: responsePayload.search_plan,
+    verification: responsePayload.verification,
+    investigated_repositories: responsePayload.investigations.map((item) => item.full_name)
+  };
+  const statements = [
+    env.DB.prepare("INSERT INTO agent_runs (id, search_session_id, status, request_json, result_json, retry_count, created_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(responsePayload.run_id, responsePayload.search.session_id, responsePayload.status, JSON.stringify(requestBody), JSON.stringify(compactResult), responsePayload.retry_count, responsePayload.created_at, responsePayload.completed_at)
+  ];
+  for (const step of responsePayload.steps) {
+    statements.push(env.DB.prepare("INSERT INTO agent_steps (run_id, node, status, duration_ms, attempts, summary, started_at, completed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+      .bind(responsePayload.run_id, step.node, step.status, step.duration_ms, step.attempts, step.summary, step.started_at, step.completed_at));
+  }
+  await env.DB.batch(statements);
+}
+
+async function runAgent(request, env) {
+  const body = await request.json();
+  const runId = crypto.randomUUID();
+  const createdAt = new Date().toISOString();
+  const steps = [];
+
+  let startedAt = new Date().toISOString();
+  let startedClock = performance.now();
+  const constraints = parseConstraints(body.query, body);
+  steps.push(createAgentStep("parse_query", startedAt, startedClock, "完成自然语言约束解析"));
+
+  startedAt = new Date().toISOString();
+  startedClock = performance.now();
+  const terms = constraints.technologies.length ? constraints.technologies : ((body.query.match(/[A-Za-z][A-Za-z0-9.+#-]{2,}/g) || []).slice(0, 3));
+  const queryParts = [...terms, "language:Python"];
+  if (constraints.exclude_archived) queryParts.push("archived:false");
+  if (constraints.pushed_after) queryParts.push("pushed:>" + constraints.pushed_after);
+  const searchPlan = ["local-index:" + body.query, "github-live:" + queryParts.join(" "), "investigate-top:" + Math.max(1, Math.min(Number(body.investigate_limit || 2), 3))];
+  steps.push(createAgentStep("plan_search", startedAt, startedClock, "规划双路召回和受限深度调查"));
+
+  startedAt = new Date().toISOString();
+  startedClock = performance.now();
+  const searchRequest = new Request(request.url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const searchResponse = await searchRepositories(searchRequest, env);
+  const search = await searchResponse.json();
+  steps.push(createAgentStep("retrieve_candidates", startedAt, startedClock, "完成候选合并、硬过滤和确定性排序", search.retrieval?.github_status === "unavailable" ? "partial" : "completed"));
+
+  startedAt = new Date().toISOString();
+  startedClock = performance.now();
+  const investigateLimit = Math.max(1, Math.min(Number(body.investigate_limit || 2), 3));
+  const selected = search.results.slice(0, investigateLimit);
+  const investigationResults = await Promise.all(selected.map((item) => investigateWithRetry(item.full_name)));
+  const investigations = investigationResults.filter((item) => item.investigation).map((item) => item.investigation);
+  const failedCount = investigationResults.length - investigations.length;
+  const maxAttempts = Math.max(1, ...investigationResults.map((item) => item.attempts));
+  steps.push(createAgentStep("investigate_repositories", startedAt, startedClock, "完成 " + investigations.length + "/" + selected.length + " 个仓库的只读证据调查", failedCount ? "partial" : "completed", maxAttempts));
+
+  startedAt = new Date().toISOString();
+  startedClock = performance.now();
+  const investigationMap = new Map(investigations.map((item) => [item.full_name, item]));
+  const verification = selected.map((item) => verifyAgentResult(item, investigationMap.get(item.full_name)));
+  const conflictCount = verification.filter((item) => item.conflicts.length).length;
+  steps.push(createAgentStep("verify_evidence", startedAt, startedClock, "验证 " + verification.length + " 个推荐，发现 " + conflictCount + " 个事实冲突", failedCount || conflictCount ? "partial" : "completed"));
+
+  const responsePayload = {
+    run_id: runId,
+    status: failedCount || conflictCount ? "partial" : "succeeded",
+    created_at: createdAt,
+    completed_at: new Date().toISOString(),
+    retry_count: maxAttempts > 1 ? 1 : 0,
+    search_plan: searchPlan,
+    search,
+    investigations,
+    verification,
+    steps
+  };
+  await persistAgentRun(env, body, responsePayload);
+  return json(responsePayload);
+}
+
 function evaluationSummary() {
   const cases = [
     ["Python FastAPI，MIT，最近半年更新", { technology: "FastAPI", license: "MIT", purpose: "learning" }],
@@ -409,6 +538,7 @@ async function handleApi(request, url, env) {
         ready: (totals?.repository_count || 0) > 0
       });
     }
+    if (url.pathname === "/api/v1/agent/runs" && request.method === "POST") return await runAgent(request, env);
     if (url.pathname === "/api/v1/search" && request.method === "POST") return await searchRepositories(request, env);
     if (url.pathname === "/api/v1/evals/summary" || url.pathname === "/api/v1/evals/run") return evaluationSummary();
     if (url.pathname === "/api/v1/feedback" && request.method === "POST") {

@@ -45,6 +45,37 @@ export type SearchResponse = {
   };
 };
 
+export type AgentStep = {
+  node: "parse_query" | "plan_search" | "retrieve_candidates" | "investigate_repositories" | "verify_evidence";
+  status: "completed" | "partial" | "failed";
+  started_at: string;
+  completed_at: string;
+  duration_ms: number;
+  attempts: number;
+  summary: string;
+};
+
+export type AgentRunResponse = {
+  run_id: string;
+  status: "succeeded" | "partial" | "failed";
+  created_at: string;
+  completed_at: string;
+  retry_count: number;
+  search_plan: string[];
+  search: SearchResponse;
+  investigations: RepositoryInvestigation[];
+  verification: Array<{
+    full_name: string;
+    checked_claims: number;
+    supported_claims: number;
+    conflicts: string[];
+    evidence_ids: string[];
+    support_ratio: number;
+    confidence: "high" | "medium" | "low";
+  }>;
+  steps: AgentStep[];
+};
+
 export type ContributionIssue = {
   number: number;
   title: string;

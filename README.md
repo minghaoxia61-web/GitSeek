@@ -14,11 +14,12 @@ The repository currently contains the first end-to-end product slice:
 4. Synchronize deterministic repository search results through the GitHub API.
 5. Explore results through a complete repository-intelligence web interface.
 
-The current V1 also includes contribution-Issue screening, device-local saves, feedback capture,
-and a deterministic smoke evaluation that reports real parser results instead of placeholder metrics.
-Search sessions, recommendation evidence, repository snapshots, refreshed Issues, feedback, and
-saved repositories now have database-backed persistence. The public Sites build uses D1 for the same
-product activity, while the FastAPI stack uses PostgreSQL.
+The current V1 also includes a bounded Agent workflow, contribution-Issue screening, device-local
+saves, feedback capture, and a deterministic smoke evaluation that reports real parser results
+instead of placeholder metrics. Agent runs, step traces, search sessions, recommendation evidence,
+repository snapshots, refreshed Issues, feedback, and saved repositories have database-backed
+persistence. The public Sites build uses D1 for the same product activity, while the FastAPI stack
+uses PostgreSQL.
 
 ## Local development
 
@@ -69,6 +70,31 @@ tests. Every recommendation reports whether it came from the local index, GitHub
 both, and includes the data fetch time. If GitHub is rate-limited, indexed matches remain available.
 
 Index readiness and freshness are available through `GET /api/v1/index/status`.
+
+## Bounded Agent workflow
+
+The web discovery flow calls `POST /api/v1/agent/runs`. A run parses constraints, records a search
+plan, performs hybrid retrieval, investigates at most three top repositories, and verifies its own
+recommendation evidence. Every node records status, duration, attempts, and a short summary. Failed
+repository investigations are retried once unless GitHub has already reported a rate limit.
+
+```powershell
+$body = @{
+  query = "找一个适合新手参与的 Python CLI 项目，MIT 许可证"
+  limit = 10
+  investigate_limit = 3
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Uri "http://localhost:8000/api/v1/agent/runs" `
+  -Method Post `
+  -ContentType "application/json; charset=utf-8" `
+  -Body $body
+```
+
+The workflow is intentionally deterministic and read-only. It does not execute repository content,
+make GitHub changes, or depend on a language model to complete a search. The ordinary
+`POST /api/v1/search` endpoint remains available as a lower-latency fallback.
 
 ## Repository investigation
 

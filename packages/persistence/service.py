@@ -5,9 +5,12 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from packages.domain.agent import AgentRunRequest, AgentRunResponse
 from packages.domain.contribution import ContributionIssueResponse
 from packages.domain.feedback import FeedbackReceipt, FeedbackRequest, FeedbackSummary
 from packages.domain.models import (
+    AgentRunRecord,
+    AgentStepRecord,
     ContributionIssueRecord,
     FeedbackRecord,
     RecommendationRecord,
@@ -241,6 +244,54 @@ class ProductPersistence:
                 else:
                     for key, value in values.items():
                         setattr(record, key, value)
+            self._session.commit()
+            return True
+        except SQLAlchemyError:
+            self._session.rollback()
+            return False
+
+    def save_agent_run(
+        self,
+        request: AgentRunRequest,
+        response: AgentRunResponse,
+    ) -> bool:
+        try:
+            search_session_id = response.search.session_id
+            if self._session.get(SearchSession, search_session_id) is None:
+                search_session_id = None
+            self._session.add(
+                AgentRunRecord(
+                    id=response.run_id,
+                    search_session_id=search_session_id,
+                    status=response.status,
+                    request_json=request.model_dump(mode="json"),
+                    result_json={
+                        "search_plan": response.search_plan,
+                        "verification": [
+                            item.model_dump(mode="json") for item in response.verification
+                        ],
+                        "investigated_repositories": [
+                            item.full_name for item in response.investigations
+                        ],
+                    },
+                    retry_count=response.retry_count,
+                    created_at=response.created_at,
+                    completed_at=response.completed_at,
+                )
+            )
+            for step in response.steps:
+                self._session.add(
+                    AgentStepRecord(
+                        run_id=response.run_id,
+                        node=step.node,
+                        status=step.status,
+                        duration_ms=step.duration_ms,
+                        attempts=step.attempts,
+                        summary=step.summary,
+                        started_at=step.started_at,
+                        completed_at=step.completed_at,
+                    )
+                )
             self._session.commit()
             return True
         except SQLAlchemyError:

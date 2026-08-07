@@ -1,7 +1,7 @@
 # OpenScout architecture
 
-OpenScout uses a staged recommendation pipeline. The initial implementation deliberately starts
-with a deterministic vertical slice before introducing embeddings or agent orchestration.
+OpenScout uses a staged recommendation pipeline. Its Agent is a bounded orchestration layer around
+deterministic retrieval and evidence collection, so a run remains inspectable and reproducible.
 
 ```text
 natural-language query
@@ -16,9 +16,25 @@ candidate retrieval -> hard filters -> deterministic ranking
                               evidence-backed Top 10
 ```
 
-The first two implementation milestones provide the API runtime, repository persistence, and a
-typed GitHub synchronization path. Subsequent milestones add deterministic ranking, evaluation,
-and finally bounded LLM assistance.
+The implementation provides the API runtime, repository persistence, a typed GitHub synchronization
+path, deterministic ranking and evaluation, and bounded Agent orchestration. Model-assisted query
+understanding can be added later without making it responsible for hard constraints or factual
+verification.
+
+## Agent run lifecycle
+
+```text
+parse query -> plan search -> hybrid retrieval -> investigate Top 1-3 -> verify evidence
+     |              |              |                    |                    |
+     +--------------+--------------+--------------------+--------------------+
+                                persisted trace
+```
+
+Each node records timestamps, duration, attempts, status, and a user-readable summary. Repository
+investigation runs concurrently with a maximum of three targets and one retry for transient GitHub
+errors. Rate limits are not retried. A missing investigation or evidence conflict marks the run as
+partial instead of hiding uncertainty. FastAPI persists traces to PostgreSQL; the public Worker uses
+the equivalent D1 schema.
 
 ## Metadata recommendation baseline
 
