@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from packages.domain.investigation import RepositoryInvestigation
+from packages.domain.query_plan import QueryInterpretation
 from packages.domain.search import SearchRequest, SearchResponse
 
 AgentNode = Literal[
@@ -46,6 +47,7 @@ class AgentRunResponse(BaseModel):
     created_at: datetime
     completed_at: datetime
     retry_count: int = Field(default=0, ge=0, le=1)
+    interpretation: QueryInterpretation
     search_plan: list[str]
     search: SearchResponse
     investigations: list[RepositoryInvestigation]

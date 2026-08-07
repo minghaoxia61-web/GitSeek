@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from packages.agents import AgentWorkflow
 from packages.domain.agent import AgentRunRequest
 from packages.domain.models import AgentRunRecord, AgentStepRecord, Base
+from packages.domain.query_plan import ModelQueryPlan
 from packages.github_client.schemas import (
     GitHubCommunityProfile,
     GitHubContentItem,
@@ -51,7 +52,6 @@ class AgentStubClient:
                 }
             }
         )
-
     async def get_repository(self, owner: str, repo: str) -> GitHubRepository:
         assert (owner, repo) == ("example", "fastapi-demo")
         return self.repository
@@ -121,6 +121,21 @@ class AgentStubClient:
         )
 
 
+class StubQueryPlanner:
+    model = "test-model"
+
+    async def plan(self, query: str) -> ModelQueryPlan:
+        assert "FastAPI" in query
+        return ModelQueryPlan(
+            summary="寻找适合初学者学习的 FastAPI 仓库",
+            language="Python",
+            technologies=["FastAPI"],
+            github_terms=["FastAPI", "beginner"],
+            licenses=["MIT"],
+            purpose="learning",
+        )
+
+
 def test_agent_runs_bounded_workflow_and_persists_trace() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -131,6 +146,7 @@ def test_agent_runs_bounded_workflow_and_persists_trace() -> None:
                 AgentStubClient(),
                 persistence,
                 RepositoryIndex(session),
+                StubQueryPlanner(),
             ).run(
                 AgentRunRequest(
                     query="适合初学者学习的 FastAPI 项目，MIT 许可证",
@@ -140,6 +156,11 @@ def test_agent_runs_bounded_workflow_and_persists_trace() -> None:
         )
 
         assert response.status == "succeeded"
+        assert response.interpretation.source == "model"
+        assert response.interpretation.model == "test-model"
+        assert response.search.generated_github_query.startswith(
+            "FastAPI beginner language:Python"
+        )
         assert [step.node for step in response.steps] == [
             "parse_query",
             "plan_search",

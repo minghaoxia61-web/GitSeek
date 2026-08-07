@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     github_token: SecretStr | None = Field(default=None, validation_alias="GITHUB_TOKEN")
     github_api_url: str = "https://api.github.com"
     github_api_version: str = "2026-03-10"
+    openai_api_key: SecretStr | None = Field(default=None, validation_alias="OPENAI_API_KEY")
+    openai_model: str = "gpt-5.6-luna"
+    openai_api_url: str = "https://api.openai.com/v1"
 
 
 @lru_cache

@@ -10,8 +10,10 @@ from packages.domain.agent import (
     EvidenceVerification,
 )
 from packages.domain.investigation import RepositoryInvestigation
+from packages.domain.query_plan import QueryInterpretation
 from packages.github_client import GitHubAPIError, GitHubClient, GitHubRateLimitError
 from packages.investigation import RepositoryInvestigator
+from packages.model_planning import ModelPlanningError, OpenAIQueryPlanner
 from packages.persistence import ProductPersistence
 from packages.retrieval import RepositoryIndex, build_github_query, parse_search_constraints
 from packages.search import SearchService
@@ -82,10 +84,12 @@ class AgentWorkflow:
         client: GitHubClient,
         persistence: ProductPersistence | None = None,
         repository_index: RepositoryIndex | None = None,
+        query_planner: OpenAIQueryPlanner | None = None,
     ) -> None:
         self._client = client
         self._persistence = persistence
         self._repository_index = repository_index
+        self._query_planner = query_planner
 
     async def run(self, request: AgentRunRequest) -> AgentRunResponse:
         run_id = str(uuid4())
@@ -94,6 +98,32 @@ class AgentWorkflow:
 
         started_at, started_clock = datetime.now(UTC), perf_counter()
         constraints = parse_search_constraints(request.query)
+        search_terms = list(constraints.technologies)
+        interpretation = QueryInterpretation(
+            source="rules",
+            summary="使用内置规则识别查询条件",
+            search_terms=search_terms,
+            fallback_reason="OPENAI_API_KEY 未配置",
+        )
+        if self._query_planner is not None:
+            try:
+                model_plan = await self._query_planner.plan(request.query)
+                constraints = model_plan.constraints()
+                search_terms = model_plan.github_terms or model_plan.technologies
+                interpretation = QueryInterpretation(
+                    source="model",
+                    model=self._query_planner.model,
+                    summary=model_plan.summary,
+                    search_terms=search_terms,
+                )
+            except ModelPlanningError:
+                interpretation = QueryInterpretation(
+                    source="rules",
+                    model=self._query_planner.model,
+                    summary="模型解析暂时不可用，已使用内置规则",
+                    search_terms=search_terms,
+                    fallback_reason="模型请求失败或输出无效",
+                )
         if request.purpose is not None:
             constraints.purpose = request.purpose
         if request.weekly_hours is not None:
@@ -111,13 +141,17 @@ class AgentWorkflow:
                 "parse_query",
                 started_at,
                 started_clock,
-                f"解析出 {len(constraints.technologies)} 个技术条件和 "
-                f"{len(constraints.licenses)} 个许可证条件",
+                (
+                    f"{interpretation.model} 已理解需求：{interpretation.summary}"
+                    if interpretation.source == "model"
+                    else f"规则解析：{interpretation.summary}"
+                ),
+                status="completed" if interpretation.source == "model" else "partial",
             )
         )
 
         started_at, started_clock = datetime.now(UTC), perf_counter()
-        github_query = build_github_query(constraints)
+        github_query = build_github_query(constraints, search_terms)
         search_plan = [
             f"local-index:{request.query}",
             f"github-live:{github_query}",
@@ -137,7 +171,7 @@ class AgentWorkflow:
             self._client,
             self._persistence,
             self._repository_index,
-        ).search(request)
+        ).search(request, constraints=constraints, search_terms=search_terms)
         steps.append(
             _step(
                 "retrieve_candidates",
@@ -194,13 +228,18 @@ class AgentWorkflow:
             )
         )
 
-        status = "partial" if failed_count or conflicts else "succeeded"
+        status = (
+            "partial"
+            if failed_count or conflicts or interpretation.source == "rules"
+            else "succeeded"
+        )
         response = AgentRunResponse(
             run_id=run_id,
             status=status,
             created_at=created_at,
             completed_at=datetime.now(UTC),
             retry_count=1 if max_attempts > 1 else 0,
+            interpretation=interpretation,
             search_plan=search_plan,
             search=search,
             investigations=investigations,

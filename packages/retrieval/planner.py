@@ -1,8 +1,12 @@
 from packages.domain.search import SearchConstraints
 
 
-def build_github_query(constraints: SearchConstraints) -> str:
-    parts = [*constraints.technologies, f"language:{constraints.language}"]
+def build_github_query(
+    constraints: SearchConstraints,
+    search_terms: list[str] | None = None,
+) -> str:
+    terms = search_terms if search_terms else constraints.technologies
+    parts = [*dict.fromkeys(terms), f"language:{constraints.language}"]
     if constraints.exclude_archived:
         parts.append("archived:false")
     if constraints.pushed_after:

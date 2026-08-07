@@ -337,7 +337,13 @@ function ResultsView({
 
         <aside className="evidence-rail">
           {agentRun && <article className="panel">
-            <div className="panel-title"><span>Agent 执行</span><small>{agentRun.status === "succeeded" ? "完整完成" : "部分降级"}</small></div>
+            <div className="panel-title"><span>Agent 执行</span><small>{agentRun.interpretation.source === "model" ? agentRun.interpretation.model : "规则降级"}</small></div>
+            <div className="agent-interpretation">
+              <b>{agentRun.interpretation.source === "model" ? "模型理解" : "当前未使用模型"}</b>
+              <p>{agentRun.interpretation.summary}</p>
+              {agentRun.interpretation.search_terms.length > 0 && <span>检索词：{agentRun.interpretation.search_terms.join(" · ")}</span>}
+              {agentRun.interpretation.fallback_reason && <span>{agentRun.interpretation.fallback_reason}</span>}
+            </div>
             {agentRun.steps.map((step) => <div className="audit-row" key={step.node}><Signal tone={step.status === "completed" ? "green" : "amber"} /><span>{step.summary}</span><b>{step.duration_ms}ms</b></div>)}
             <p className="panel-note">证据支持率 {agentRun.verification.length ? Math.round(agentRun.verification.reduce((sum, item) => sum + item.support_ratio, 0) / agentRun.verification.length * 100) : 0}% · 最多重试 {agentRun.retry_count} 次</p>
           </article>}

@@ -1,7 +1,12 @@
 from datetime import UTC, date, datetime
 from uuid import uuid4
 
-from packages.domain.search import RetrievalSummary, SearchRequest, SearchResponse
+from packages.domain.search import (
+    RetrievalSummary,
+    SearchConstraints,
+    SearchRequest,
+    SearchResponse,
+)
 from packages.github_client import GitHubAPIError, GitHubClient
 from packages.persistence import ProductPersistence
 from packages.ranking import rank_repositories
@@ -19,8 +24,19 @@ class SearchService:
         self._persistence = persistence
         self._repository_index = repository_index
 
-    async def search(self, request: SearchRequest, *, today: date | None = None) -> SearchResponse:
-        constraints = parse_search_constraints(request.query, today=today)
+    async def search(
+        self,
+        request: SearchRequest,
+        *,
+        today: date | None = None,
+        constraints: SearchConstraints | None = None,
+        search_terms: list[str] | None = None,
+    ) -> SearchResponse:
+        constraints = (
+            constraints.model_copy(deep=True)
+            if constraints is not None
+            else parse_search_constraints(request.query, today=today)
+        )
         if request.purpose is not None:
             constraints.purpose = request.purpose
         if request.weekly_hours is not None:
@@ -33,7 +49,7 @@ class SearchService:
             constraints.licenses = request.licenses
         if request.pushed_after is not None:
             constraints.pushed_after = request.pushed_after
-        github_query = build_github_query(constraints)
+        github_query = build_github_query(constraints, search_terms)
         indexed = (
             self._repository_index.search(request.query, constraints)
             if self._repository_index is not None

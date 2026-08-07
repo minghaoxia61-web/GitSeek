@@ -24,7 +24,7 @@ verification.
 ## Agent run lifecycle
 
 ```text
-parse query -> plan search -> hybrid retrieval -> investigate Top 1-3 -> verify evidence
+model/rule parse -> plan search -> hybrid retrieval -> investigate Top 1-3 -> verify evidence
      |              |              |                    |                    |
      +--------------+--------------+--------------------+--------------------+
                                 persisted trace
@@ -35,6 +35,12 @@ investigation runs concurrently with a maximum of three targets and one retry fo
 errors. Rate limits are not retried. A missing investigation or evidence conflict marks the run as
 partial instead of hiding uncertainty. FastAPI persists traces to PostgreSQL; the public Worker uses
 the equivalent D1 schema.
+
+The optional model planner calls the OpenAI Responses API once at the beginning of a run and accepts
+only a strict query-plan schema. Its output is sanitized before becoming GitHub search text. Explicit
+form selections override inferred values, and the model cannot relax later hard filters or execute
+tools directly. A missing key, timeout, API error, or invalid response returns to the versioned rule
+parser and is visible as a partial run rather than silently producing the same behavior.
 
 ## Metadata recommendation baseline
 

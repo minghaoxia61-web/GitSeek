@@ -266,6 +266,7 @@ class ProductPersistence:
                     status=response.status,
                     request_json=request.model_dump(mode="json"),
                     result_json={
+                        "interpretation": response.interpretation.model_dump(mode="json"),
                         "search_plan": response.search_plan,
                         "verification": [
                             item.model_dump(mode="json") for item in response.verification

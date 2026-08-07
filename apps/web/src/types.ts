@@ -61,6 +61,13 @@ export type AgentRunResponse = {
   created_at: string;
   completed_at: string;
   retry_count: number;
+  interpretation: {
+    source: "model" | "rules";
+    model: string | null;
+    summary: string;
+    search_terms: string[];
+    fallback_reason: string | null;
+  };
   search_plan: string[];
   search: SearchResponse;
   investigations: RepositoryInvestigation[];

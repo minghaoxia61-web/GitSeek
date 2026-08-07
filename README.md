@@ -93,8 +93,15 @@ Invoke-RestMethod `
 ```
 
 The workflow is intentionally deterministic and read-only. It does not execute repository content,
-make GitHub changes, or depend on a language model to complete a search. The ordinary
-`POST /api/v1/search` endpoint remains available as a lower-latency fallback.
+or make GitHub changes. When `OPENAI_API_KEY` is configured, `gpt-5.6-luna` uses the Responses API
+with strict structured output to infer the language, technology concepts, GitHub search terms, and
+optional constraints from the complete natural-language request. The model can be changed with
+`OPENSCOUT_OPENAI_MODEL` locally or `OPENAI_MODEL` in the Sites runtime. Hard filtering, ranking,
+repository access, and evidence verification remain controlled by application code.
+
+If the model is unconfigured, times out, or returns invalid output, the run falls back to the built-in
+parser and reports that downgrade in `interpretation.source` and the frontend execution panel. The
+ordinary `POST /api/v1/search` endpoint remains available as a lower-latency fallback.
 
 ## Repository investigation
 

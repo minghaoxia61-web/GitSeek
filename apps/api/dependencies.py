@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from packages.database.session import get_session_factory
 from packages.domain.settings import get_settings
 from packages.github_client import GitHubClient
+from packages.model_planning import OpenAIQueryPlanner
 
 
 async def get_github_client() -> AsyncIterator[GitHubClient]:
@@ -20,3 +21,14 @@ async def get_github_client() -> AsyncIterator[GitHubClient]:
 def get_db_session() -> Iterator[Session]:
     with get_session_factory()() as session:
         yield session
+
+
+def get_query_planner() -> OpenAIQueryPlanner | None:
+    settings = get_settings()
+    if settings.openai_api_key is None:
+        return None
+    return OpenAIQueryPlanner(
+        settings.openai_api_key.get_secret_value(),
+        model=settings.openai_model,
+        base_url=settings.openai_api_url,
+    )
