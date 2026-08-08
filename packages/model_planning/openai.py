@@ -91,6 +91,12 @@ def _output_text(payload: dict[str, object]) -> str:
                 text = content.get("text")
                 if isinstance(text, str):
                     return text
+    if payload.get("status") == "incomplete":
+        details = payload.get("incomplete_details")
+        reason = details.get("reason") if isinstance(details, dict) else None
+        if isinstance(reason, str):
+            raise ModelPlanningError(f"model response was incomplete: {reason}")
+        raise ModelPlanningError("model response was incomplete")
     raise ModelPlanningError("模型未返回结构化文本")
 
 
@@ -127,7 +133,9 @@ class OpenAIQueryPlanner:
                 },
             ],
             "reasoning": {"effort": "low"},
-            "max_output_tokens": 700,
+            # Reasoning tokens count toward this limit. DeepSeek V4 Flash can use most of a
+            # small budget before it emits the schema-constrained final answer.
+            "max_output_tokens": 2048,
             "text": {
                 "format": {
                     "type": "json_schema",

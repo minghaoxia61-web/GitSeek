@@ -12,6 +12,7 @@ def test_openai_query_planner_uses_structured_output_and_sanitizes_terms() -> No
         assert request.headers["Authorization"] == "Bearer test-key"
         payload = json.loads(request.content)
         assert payload["model"] == "gpt-5.6-luna"
+        assert payload["max_output_tokens"] == 2048
         assert payload["text"]["format"]["type"] == "json_schema"
         result = {
             "summary": "寻找用于桌面笔记的 TypeScript 应用",
@@ -71,3 +72,24 @@ def test_openai_query_planner_reports_safe_provider_error() -> None:
         "model provider returned HTTP 401: Authentication failed"
     )
     assert "secret-key" not in str(captured.value)
+
+
+def test_openai_query_planner_reports_incomplete_response() -> None:
+    async def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "status": "incomplete",
+                "incomplete_details": {"reason": "max_output_tokens"},
+                "output": [{"type": "reasoning", "content": []}],
+            },
+        )
+
+    async def run() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            await OpenAIQueryPlanner("secret-key", client=client).plan("Find a project")
+
+    with pytest.raises(ModelPlanningError) as captured:
+        asyncio.run(run())
+
+    assert str(captured.value) == "model response was incomplete: max_output_tokens"
