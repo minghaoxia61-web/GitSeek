@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import Field, SecretStr
+from pydantic import AliasChoices, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -21,8 +21,9 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173,http://localhost:5173,"
         "tauri://localhost,http://tauri.localhost"
     )
-    database_url: str = (
-        "postgresql+psycopg://openscout:openscout@localhost:5432/openscout"
+    database_url: str = Field(
+        default="postgresql+psycopg://openscout:openscout@localhost:5432/openscout",
+        validation_alias=AliasChoices("OPENSCOUT_DATABASE_URL", "DATABASE_URL"),
     )
     github_token: SecretStr | None = Field(default=None, validation_alias="GITHUB_TOKEN")
     github_api_url: str = "https://api.github.com"
@@ -30,6 +31,17 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = Field(default=None, validation_alias="OPENAI_API_KEY")
     openai_model: str = "gpt-5.6-luna"
     openai_api_url: str = "https://api.openai.com/v1"
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def use_psycopg_driver(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        if value.startswith("postgresql://"):
+            return value.replace("postgresql://", "postgresql+psycopg://", 1)
+        if value.startswith("postgres://"):
+            return value.replace("postgres://", "postgresql+psycopg://", 1)
+        return value
 
     @property
     def allowed_cors_origins(self) -> list[str]:

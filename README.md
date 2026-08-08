@@ -81,6 +81,36 @@ If the local Windows toolchain is unavailable, run the `Build Windows desktop ap
 the repository's GitHub Actions page. Enter the public API base URL when prompted, then download the
 `GitSeek-Windows` artifact after the workflow finishes.
 
+## Vercel API deployment
+
+The repository root contains `app.py`, which exposes the FastAPI application as a Vercel Python
+Function. Import the repository into Vercel with the repository root as the project root. The API
+still requires an external PostgreSQL database; a Neon integration can provide `DATABASE_URL`, which
+GitSeek automatically normalizes to the installed psycopg driver.
+
+Configure these Vercel environment variables for Production, Preview, and Development as needed:
+
+```text
+DATABASE_URL=<pooled PostgreSQL connection URL from Neon>
+OPENSCOUT_ENV=production
+OPENSCOUT_CORS_ORIGINS=tauri://localhost,http://tauri.localhost,http://127.0.0.1:5173,http://localhost:5173
+GITHUB_TOKEN=<GitHub token>
+OPENAI_API_KEY=<DeepSeek API key>
+OPENSCOUT_OPENAI_MODEL=deepseek-v4-flash
+OPENSCOUT_OPENAI_API_URL=https://api.deepseek.com
+```
+
+Run migrations once against the cloud database before using persistence-backed endpoints:
+
+```powershell
+$env:DATABASE_URL = "<Neon connection URL>"
+.\.venv\Scripts\python -m alembic upgrade head
+Remove-Item Env:DATABASE_URL
+```
+
+After Vercel reports a ready deployment, verify `https://<deployment-domain>/health`, then use the
+deployment origin (without `/health`) as `api_base_url` in the Windows desktop build workflow.
+
 The first recommendation baseline is available through `POST /api/v1/search`:
 
 ```powershell
