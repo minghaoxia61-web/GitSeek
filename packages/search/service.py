@@ -10,7 +10,7 @@ from packages.domain.search import (
 from packages.github_client import GitHubAPIError, GitHubClient
 from packages.persistence import ProductPersistence
 from packages.ranking import rank_repositories
-from packages.retrieval import RepositoryIndex, build_github_query, parse_search_constraints
+from packages.retrieval import RepositoryIndex, build_github_queries, parse_search_constraints
 
 
 class SearchService:
@@ -49,25 +49,33 @@ class SearchService:
             constraints.licenses = request.licenses
         if request.pushed_after is not None:
             constraints.pushed_after = request.pushed_after
-        github_query = build_github_query(constraints, search_terms)
+        github_queries = build_github_queries(constraints, search_terms)
+        github_query = " | ".join(github_queries)
         indexed = (
             self._repository_index.search(request.query, constraints)
             if self._repository_index is not None
             else []
         )
-        github_items = []
+        github_items_by_name = {}
         github_total = 0
         github_status = "live"
-        try:
-            page = await self._client.search_repositories(
-                github_query,
-                per_page=100,
-            )
-            github_items = page.result.items
-            github_total = page.result.total_count
-        except GitHubAPIError:
+        successful_queries = 0
+        last_error: GitHubAPIError | None = None
+        for query in github_queries:
+            try:
+                page = await self._client.search_repositories(query, per_page=100)
+            except GitHubAPIError as exc:
+                last_error = exc
+                continue
+            successful_queries += 1
+            github_total += page.result.total_count
+            for item in page.result.items:
+                github_items_by_name[item.full_name] = item
+        github_items = list(github_items_by_name.values())
+        if successful_queries == 0:
             if not indexed:
-                raise
+                assert last_error is not None
+                raise last_error
             github_status = "unavailable"
 
         candidates = {item.repository.full_name: item.repository for item in indexed}

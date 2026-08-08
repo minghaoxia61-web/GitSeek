@@ -6,11 +6,11 @@ import type { AgentRunResponse, ContributionIssue, EvaluationSummary, Recommenda
 
 type SearchOptions = {
   purpose: "learning" | "contribution";
-  weeklyHours: number;
+  weeklyHours: number | null;
   platform: string | null;
   licenses: string[];
   recentOnly: boolean;
-  projectSize: "small" | "medium" | "large";
+  projectSize: "small" | "medium" | "large" | null;
 };
 
 const sampleQueries = [
@@ -128,9 +128,9 @@ function DiscoverView({ onSearch }: { onSearch: (query: string, options: SearchO
   const [advanced, setAdvanced] = useState(false);
   const [loading, setLoading] = useState(false);
   const [constraints, setConstraints] = useState(["Python"]);
-  const [weeklyHours, setWeeklyHours] = useState(5);
+  const [weeklyHours, setWeeklyHours] = useState<number | null>(null);
   const [platform, setPlatform] = useState("");
-  const [projectSize, setProjectSize] = useState<"small" | "medium" | "large">("medium");
+  const [projectSize, setProjectSize] = useState<"" | "small" | "medium" | "large">("");
 
   const constraintOptions = ["Python", "MIT / Apache", "半年内活跃", "支持 Windows"];
 
@@ -150,7 +150,7 @@ function DiscoverView({ onSearch }: { onSearch: (query: string, options: SearchO
       platform: constraints.includes("支持 Windows") ? "Windows" : platform || null,
       licenses: constraints.includes("MIT / Apache") ? ["MIT", "Apache-2.0"] : [],
       recentOnly: constraints.includes("半年内活跃"),
-      projectSize,
+      projectSize: projectSize || null,
     });
     setLoading(false);
   }
@@ -191,8 +191,8 @@ function DiscoverView({ onSearch }: { onSearch: (query: string, options: SearchO
           </div>
           {advanced && (
             <div className="advanced-grid">
-              <label>每周时间<select value={weeklyHours} onChange={(event) => setWeeklyHours(Number(event.target.value))}><option value="5">≤ 5 小时</option><option value="10">≤ 10 小时</option><option value="20">≤ 20 小时</option></select></label>
-              <label>项目规模<select value={projectSize} onChange={(event) => setProjectSize(event.target.value as "small" | "medium" | "large")}><option value="small">小型 · 5k Star 以下</option><option value="medium">中型 · 1k–30k Star</option><option value="large">大型 · 10k Star 以上</option></select></label>
+              <label>每周时间<select value={weeklyHours ?? ""} onChange={(event) => setWeeklyHours(event.target.value ? Number(event.target.value) : null)}><option value="">不限</option><option value="5">≤ 5 小时</option><option value="10">≤ 10 小时</option><option value="20">≤ 20 小时</option></select></label>
+              <label>项目规模<select value={projectSize} onChange={(event) => setProjectSize(event.target.value as "" | "small" | "medium" | "large")}><option value="">不限</option><option value="small">小型 · 5k Star 以下</option><option value="medium">中型 · 1k–30k Star</option><option value="large">大型 · 10k Star 以上</option></select></label>
               <label>运行平台<select value={platform} onChange={(event) => setPlatform(event.target.value)}><option value="">不限</option><option value="Windows">Windows</option><option value="macOS">macOS</option><option value="Linux">Linux</option></select></label>
             </div>
           )}

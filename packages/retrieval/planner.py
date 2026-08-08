@@ -18,3 +18,13 @@ def build_github_query(
     elif constraints.project_size == "large":
         parts.append("stars:>10000")
     return " ".join(parts)
+
+
+def build_github_queries(
+    constraints: SearchConstraints,
+    search_terms: list[str] | None = None,
+) -> list[str]:
+    terms = list(dict.fromkeys(search_terms if search_terms else constraints.technologies))[:3]
+    if not terms:
+        return [build_github_query(constraints, [])]
+    return [build_github_query(constraints, [term]) for term in terms]

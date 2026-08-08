@@ -158,9 +158,8 @@ def test_agent_runs_bounded_workflow_and_persists_trace() -> None:
         assert response.status == "succeeded"
         assert response.interpretation.source == "model"
         assert response.interpretation.model == "test-model"
-        assert response.search.generated_github_query.startswith(
-            "FastAPI beginner language:Python"
-        )
+        assert response.search.generated_github_query.startswith("FastAPI language:Python")
+        assert "beginner language:Python" in response.search.generated_github_query
         assert [step.node for step in response.steps] == [
             "parse_query",
             "plan_search",

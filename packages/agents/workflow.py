@@ -15,7 +15,7 @@ from packages.github_client import GitHubAPIError, GitHubClient, GitHubRateLimit
 from packages.investigation import RepositoryInvestigator
 from packages.model_planning import ModelPlanningError, OpenAIQueryPlanner
 from packages.persistence import ProductPersistence
-from packages.retrieval import RepositoryIndex, build_github_query, parse_search_constraints
+from packages.retrieval import RepositoryIndex, build_github_queries, parse_search_constraints
 from packages.search import SearchService
 
 
@@ -151,10 +151,10 @@ class AgentWorkflow:
         )
 
         started_at, started_clock = datetime.now(UTC), perf_counter()
-        github_query = build_github_query(constraints, search_terms)
+        github_queries = build_github_queries(constraints, search_terms)
         search_plan = [
             f"local-index:{request.query}",
-            f"github-live:{github_query}",
+            *(f"github-live:{query}" for query in github_queries),
             f"investigate-top:{request.investigate_limit}",
         ]
         steps.append(

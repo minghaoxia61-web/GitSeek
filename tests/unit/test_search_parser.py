@@ -1,6 +1,6 @@
 from datetime import date
 
-from packages.retrieval import build_github_query, parse_search_constraints
+from packages.retrieval import build_github_queries, build_github_query, parse_search_constraints
 
 
 def test_parses_chinese_search_constraints() -> None:
@@ -25,3 +25,12 @@ def test_archived_repositories_can_be_explicitly_included() -> None:
     assert constraints.exclude_archived is False
     assert "archived:false" not in build_github_query(constraints)
 
+
+def test_model_terms_create_broad_independent_queries() -> None:
+    constraints = parse_search_constraints("Python FastAPI 项目")
+
+    assert build_github_queries(constraints, ["fastapi", "tutorial", "example"]) == [
+        "fastapi language:Python archived:false",
+        "tutorial language:Python archived:false",
+        "example language:Python archived:false",
+    ]
