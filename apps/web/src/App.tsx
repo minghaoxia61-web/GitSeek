@@ -1,5 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
+import { apiUrl } from "./api";
 import { demoResponse } from "./mockData";
 import type { AgentRunResponse, ContributionIssue, EvaluationSummary, Recommendation, RepositoryInvestigation, SearchResponse, View } from "./types";
 
@@ -509,7 +510,7 @@ function EvalsView() {
   async function load(method: "GET" | "POST" = "GET") {
     if (method === "POST") setRunning(true);
     try {
-      const response = await fetch(method === "GET" ? "/api/v1/evals/summary" : "/api/v1/evals/run", { method });
+      const response = await fetch(apiUrl(method === "GET" ? "/api/v1/evals/summary" : "/api/v1/evals/run"), { method });
       if (!response.ok) throw new Error("Evaluation API unavailable");
       setSummary(await response.json() as EvaluationSummary);
       setStatus("ready");
@@ -565,7 +566,7 @@ export default function App() {
       investigate_limit: 2,
     };
     try {
-      const response = await fetch("/api/v1/agent/runs", {
+      const response = await fetch(apiUrl("/api/v1/agent/runs"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
@@ -577,7 +578,7 @@ export default function App() {
       setFallback(false);
     } catch {
       try {
-        const response = await fetch("/api/v1/search", {
+        const response = await fetch(apiUrl("/api/v1/search"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),
@@ -619,7 +620,7 @@ export default function App() {
     setIssueStatus("loading");
     setView("detail");
     const [owner, name] = repo.full_name.split("/");
-    fetch(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/investigate`)
+    fetch(apiUrl(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/investigate`))
       .then((response) => {
         if (!response.ok) throw new Error("Investigation API unavailable");
         return response.json() as Promise<RepositoryInvestigation>;
@@ -630,7 +631,7 @@ export default function App() {
       })
       .catch(() => setInvestigationStatus("unavailable"));
 
-    fetch(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues?limit=5`)
+    fetch(apiUrl(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues?limit=5`))
       .then((response) => {
         if (!response.ok) throw new Error("Issue API unavailable");
         return response.json() as Promise<{ issues: ContributionIssue[] }>;
@@ -656,7 +657,7 @@ export default function App() {
       // Storage can be unavailable in a locked-down browser; API feedback still proceeds.
     }
     try {
-      const requests = [fetch("/api/v1/feedback", {
+      const requests = [fetch(apiUrl("/api/v1/feedback"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -668,7 +669,7 @@ export default function App() {
           }),
         })];
       if (action === "saved" && deviceId) {
-        requests.push(fetch("/api/v1/saved", {
+        requests.push(fetch(apiUrl("/api/v1/saved"), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ device_id: deviceId, repository: selectedRepo.full_name }),

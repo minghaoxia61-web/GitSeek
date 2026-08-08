@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "GitSeek",
+  "version": "0.1.0",
+  "identifier": "com.minghaoxia.gitseek",
+  "build": {
+    "beforeDevCommand": "pnpm --dir ../web dev",
+    "devUrl": "http://127.0.0.1:5173",
+    "beforeBuildCommand": "pnpm --dir ../web build:desktop",
+    "frontendDist": "../../web/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "GitSeek",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 1040,
+        "minHeight": 700,
+        "center": true,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' customprotocol: asset:; connect-src ipc: http://ipc.localhost https: http://127.0.0.1:* http://localhost:*; img-src 'self' asset: http://asset.localhost data: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "embedBootstrapper"
+      }
+    }
+  }
+}

@@ -49,6 +49,38 @@ Open <http://127.0.0.1:5173>. During development, `/api` requests are proxied to
 service on port `8000`. If the API is unavailable, the UI explicitly switches to demonstration
 data so the complete product flow remains reviewable.
 
+## Windows desktop application
+
+The Tauri 2 desktop shell lives in `apps/desktop`. It reuses the React interface while keeping
+GitHub and model credentials on the remote FastAPI service. Never package `OPENAI_API_KEY` or
+`GITHUB_TOKEN` into the desktop client.
+
+For local desktop development, start the API on port `8000`, then run:
+
+```powershell
+cd apps/desktop
+pnpm install
+pnpm run dev
+```
+
+Before building an installer, copy the desktop environment example and point it at the public API:
+
+```powershell
+Copy-Item ..\web\.env.desktop.example ..\web\.env.desktop
+# Edit VITE_API_BASE_URL in ..\web\.env.desktop, for example https://api.example.com
+pnpm run build
+```
+
+The build produces NSIS (`.exe`) and MSI installers under
+`apps/desktop/src-tauri/target/release/bundle`. Windows builds require Rust with the stable MSVC
+toolchain, Visual Studio Build Tools with the C++ workload and Windows SDK, and WebView2. The API
+deployment must set `OPENSCOUT_CORS_ORIGINS` to include the browser origins plus
+`tauri://localhost,http://tauri.localhost`.
+
+If the local Windows toolchain is unavailable, run the `Build Windows desktop app` workflow from
+the repository's GitHub Actions page. Enter the public API base URL when prompted, then download the
+`GitSeek-Windows` artifact after the workflow finishes.
+
 The first recommendation baseline is available through `POST /api/v1/search`:
 
 ```powershell
@@ -191,6 +223,7 @@ The Compose stack starts PostgreSQL and the API. The API is available on port `8
 
 ```text
 apps/api/          FastAPI application
+apps/desktop/      Tauri 2 Windows desktop shell and installer configuration
 apps/web/          React repository-intelligence interface
 packages/domain/   Shared domain contracts and configuration
 packages/database/ Database engine and session factory

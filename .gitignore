@@ -14,3 +14,5 @@ build/
 .docx-review/
 .migration-check/
 .run/
+apps/desktop/node_modules/
+apps/desktop/src-tauri/target/

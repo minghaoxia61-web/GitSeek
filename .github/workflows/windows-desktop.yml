@@ -1,0 +1,55 @@
+name: Build Windows desktop app
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: Public FastAPI base URL, without a trailing slash
+        required: true
+        type: string
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Enable pnpm
+        shell: pwsh
+        run: |
+          corepack enable
+          corepack prepare pnpm@11.16.0 --activate
+
+      - name: Install frontend dependencies
+        run: pnpm --dir apps/web install --frozen-lockfile
+
+      - name: Install desktop dependencies
+        run: pnpm --dir apps/desktop install --frozen-lockfile
+
+      - name: Configure public API address
+        shell: pwsh
+        env:
+          DESKTOP_API_BASE_URL: ${{ inputs.api_base_url }}
+        run: '"VITE_API_BASE_URL=$env:DESKTOP_API_BASE_URL" | Set-Content apps/web/.env.desktop'
+
+      - name: Build NSIS and MSI installers
+        run: pnpm --dir apps/desktop run build
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: GitSeek-Windows
+          path: apps/desktop/src-tauri/target/release/bundle/**
+          if-no-files-found: error
