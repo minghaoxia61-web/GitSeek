@@ -2,8 +2,9 @@ import asyncio
 import json
 
 import httpx
+import pytest
 
-from packages.model_planning import OpenAIQueryPlanner
+from packages.model_planning import ModelPlanningError, OpenAIQueryPlanner
 
 
 def test_openai_query_planner_uses_structured_output_and_sanitizes_terms() -> None:
@@ -50,3 +51,23 @@ def test_openai_query_planner_uses_structured_output_and_sanitizes_terms() -> No
     assert plan.technologies == ["Electron", "local-first"]
     assert plan.github_terms == ["desktop notes", "electron", "stars1000"]
     assert plan.project_size == "medium"
+
+
+def test_openai_query_planner_reports_safe_provider_error() -> None:
+    async def handler(_: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            401,
+            json={"error": {"message": "Authentication failed"}},
+        )
+
+    async def run() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            await OpenAIQueryPlanner("secret-key", client=client).plan("Find a project")
+
+    with pytest.raises(ModelPlanningError) as captured:
+        asyncio.run(run())
+
+    assert str(captured.value) == (
+        "model provider returned HTTP 401: Authentication failed"
+    )
+    assert "secret-key" not in str(captured.value)

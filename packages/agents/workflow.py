@@ -116,13 +116,13 @@ class AgentWorkflow:
                     summary=model_plan.summary,
                     search_terms=search_terms,
                 )
-            except ModelPlanningError:
+            except ModelPlanningError as exc:
                 interpretation = QueryInterpretation(
                     source="rules",
                     model=self._query_planner.model,
                     summary="模型解析暂时不可用，已使用内置规则",
                     search_terms=search_terms,
-                    fallback_reason="模型请求失败或输出无效",
+                    fallback_reason=str(exc),
                 )
         if request.purpose is not None:
             constraints.purpose = request.purpose

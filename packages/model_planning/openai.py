@@ -66,6 +66,22 @@ class ModelPlanningError(RuntimeError):
     pass
 
 
+def _http_error_detail(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except json.JSONDecodeError:
+        return "provider returned a non-JSON error"
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict) and isinstance(error.get("message"), str):
+            return error["message"][:240]
+        if isinstance(error, str):
+            return error[:240]
+        if isinstance(payload.get("message"), str):
+            return payload["message"][:240]
+    return "provider did not include an error message"
+
+
 def _output_text(payload: dict[str, object]) -> str:
     for item in payload.get("output", []):
         if not isinstance(item, dict) or item.get("type") != "message":
@@ -136,8 +152,22 @@ class OpenAIQueryPlanner:
             plan.github_terms = [term for item in plan.github_terms if (term := _clean_term(item))]
             plan.licenses = [term for item in plan.licenses if (term := _clean_term(item))]
             return plan
-        except (httpx.HTTPError, json.JSONDecodeError, ValidationError, TypeError) as exc:
-            raise ModelPlanningError("模型查询规划失败") from exc
+        except httpx.HTTPStatusError as exc:
+            detail = _http_error_detail(exc.response)
+            raise ModelPlanningError(
+                f"model provider returned HTTP {exc.response.status_code}: {detail}"
+            ) from exc
+        except httpx.RequestError as exc:
+            raise ModelPlanningError(
+                f"model provider network error: {type(exc).__name__}"
+            ) from exc
+        except json.JSONDecodeError as exc:
+            raise ModelPlanningError("model provider returned invalid JSON output") from exc
+        except ValidationError as exc:
+            fields = ", ".join(str(item["loc"][-1]) for item in exc.errors()[:5])
+            raise ModelPlanningError(f"model output failed validation: {fields}") from exc
+        except TypeError as exc:
+            raise ModelPlanningError("model provider returned an unexpected payload") from exc
         finally:
             if owns_client:
                 await client.aclose()
