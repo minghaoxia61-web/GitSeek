@@ -32,25 +32,14 @@ const sampleQueries = [
   "Windows 可运行、无需 GPU 的中文 OCR 项目",
 ];
 
-const navItems: { id: View; label: string; eyebrow: string }[] = [
-  { id: "discover", label: "发现项目", eyebrow: "SEARCH" },
-  { id: "results", label: "候选项目", eyebrow: "RESULTS" },
-  { id: "compare", label: "项目对比", eyebrow: "COMPARE" },
-  { id: "evals", label: "质量记录", eyebrow: "QUALITY" },
-  { id: "settings", label: "应用设置", eyebrow: "SETTINGS" },
+const navItems: { id: View; label: string }[] = [
+  { id: "discover", label: "搜索" },
+  { id: "results", label: "结果" },
 ];
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("zh-CN", { notation: "compact", maximumFractionDigits: 1 }).format(value);
 }
-
-const scoreLabels: Record<string, string> = {
-  relevance: "相关度",
-  activity: "活跃度",
-  popularity: "采用度",
-  metadata: "信息完整",
-  license: "许可证",
-};
 
 function getDeviceId() {
   const key = "gitseek:device-id";
@@ -77,6 +66,25 @@ function Signal({ tone = "green" }: { tone?: "green" | "amber" | "red" }) {
   return <span className={`signal signal--${tone}`} aria-hidden="true" />;
 }
 
+type InstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+};
+
+function InstallAppButton() {
+  const [prompt, setPrompt] = useState<InstallPromptEvent | null>(null);
+  useEffect(() => {
+    const capture = (event: Event) => {
+      event.preventDefault();
+      setPrompt(event as InstallPromptEvent);
+    };
+    window.addEventListener("beforeinstallprompt", capture);
+    return () => window.removeEventListener("beforeinstallprompt", capture);
+  }, []);
+  if (!prompt) return null;
+  return <button className="secondary-button" onClick={async () => { await prompt.prompt(); await prompt.userChoice; setPrompt(null); }}>安装到电脑</button>;
+}
+
 function Shell({
   view,
   setView,
@@ -94,12 +102,11 @@ function Shell({
     <div className="app-shell">
       <aside className="sidebar">
         <button className="brand" onClick={() => setView("discover")} aria-label="回到 GitSeek 首页">
-          <span className="brand-mark"><i /><i /><i /></span>
-          <span><b>GitSeek</b><small>开源项目研究工具</small></span>
+          <span className="brand-mark">G</span>
+          <span><b>GitSeek</b><small>repository finder</small></span>
         </button>
 
         <nav className="side-nav" aria-label="主导航">
-          <p className="nav-section-label">工作区</p>
           {navItems.map((item) => (
             <button
               key={item.id}
@@ -107,29 +114,23 @@ function Shell({
               onClick={() => setView(item.id)}
             >
               <span className={`nav-glyph nav-glyph--${item.id}`} />
-              <span><small>{item.eyebrow}</small>{item.label}</span>
-              {item.id === "compare" && compareCount > 0 && <em>{compareCount}</em>}
+              <span>{item.label}</span>
             </button>
           ))}
         </nav>
 
-        <div className="sidebar-brief">
-          <div className="brief-head"><span>数据来源</span><b>GitHub</b></div>
-          <p>推荐结果附带来源、更新时间和已知限制。</p>
-        </div>
-
         <div className="sidebar-footer">
-          <span className="avatar">GS</span>
-          <span><b>个人工作区</b><small>本地优先</small></span>
+          <button onClick={() => setView("settings")} className={view === "settings" ? "active" : ""}><span className="nav-glyph nav-glyph--settings" />设置</button>
+          <a href="https://github.com/minghaoxia61-web/GitSeek" target="_blank" rel="noreferrer">GitHub ↗</a>
         </div>
       </aside>
 
       <div className="workspace">
         <header className="topbar">
-          <div className="breadcrumb"><span>GitSeek</span><i>/</i><b>{view === "discover" ? "发现项目" : view === "evals" ? "质量记录" : view === "compare" ? "项目对比" : view === "settings" ? "应用设置" : "候选项目"}</b></div>
+          <div className="breadcrumb"><b>{view === "discover" ? "搜索项目" : view === "evals" ? "质量记录" : view === "compare" ? "项目对比" : view === "settings" ? "设置" : view === "detail" ? "项目档案" : "搜索结果"}</b></div>
           <div className="top-actions">
-            <button className={`system-chip system-chip--${connection.state}`} onClick={() => setView("settings")} title={connection.detail}><Signal tone={connection.state === "online" ? "green" : connection.state === "offline" ? "red" : "amber"} /> {connection.label}</button>
-            <a href="https://github.com/minghaoxia61-web/GitSeek" target="_blank" rel="noreferrer" className="repo-link">查看源码 ↗</a>
+            <button className="compare-shortcut" onClick={() => setView("compare")}>对比 {compareCount > 0 && <em>{compareCount}</em>}</button>
+            <button className={`system-chip system-chip--${connection.state}`} onClick={() => setView("settings")} title={connection.detail}><Signal tone={connection.state === "online" ? "green" : connection.state === "offline" ? "red" : "amber"} /> {connection.state === "online" ? "在线" : connection.state === "offline" ? "离线" : "连接中"}</button>
           </div>
         </header>
         <main>{children}</main>
@@ -175,27 +176,19 @@ function DiscoverView({ onSearch }: { onSearch: (query: string, options: SearchO
     <div className="page page--discover">
       <section className="hero-grid">
         <div className="hero-copy">
-          <div className="kicker">开源项目发现</div>
-          <h1>找到适合现在的你，<br /><em>而不只是最热门的项目。</em></h1>
-          <p>说清楚技术栈、可投入时间和目标。GitSeek 会先排除不符合条件的仓库，再把推荐理由、风险和原始来源放在一起。</p>
-          <div className="hero-proof">
-            <div><strong>先筛选</strong><span>许可证、语言与活跃时间</span></div>
-            <div><strong>再解释</strong><span>每条结论都能查看来源</span></div>
-            <div><strong>保留边界</strong><span>不确定的地方明确标出</span></div>
-          </div>
+          <div className="kicker">GitHub / repository finder</div>
+          <h1>你想找什么项目？</h1>
+          <p>写下用途、技术和限制。GitSeek 会把不符合的仓库先排除，再说明留下它们的理由。</p>
         </div>
 
         <form className="search-console" onSubmit={submit}>
-          <div className="console-topline">
-            <span>新建一次项目搜索</span>
-            <code>GitHub 公开仓库</code>
-          </div>
+          <div className="console-topline"><span>搜索描述</span><code>PUBLIC REPOSITORIES</code></div>
           <div className="mode-switch" role="tablist" aria-label="搜索模式">
-            <button type="button" className={mode === "learn" ? "active" : ""} onClick={() => setMode("learn")}><span>01</span> 学习项目</button>
-            <button type="button" className={mode === "contribute" ? "active" : ""} onClick={() => setMode("contribute")}><span>02</span> 首次贡献</button>
+            <button type="button" className={mode === "learn" ? "active" : ""} onClick={() => setMode("learn")}>用于学习</button>
+            <button type="button" className={mode === "contribute" ? "active" : ""} onClick={() => setMode("contribute")}>用于贡献</button>
           </div>
           <label className="query-field">
-            <span>用自然语言描述你的目标</span>
+            <span>例如：适合初学者的 FastAPI 项目，MIT 许可证，半年内有更新</span>
             <textarea value={query} onChange={(event) => setQuery(event.target.value)} rows={4} />
             <small>{query.length} / 500</small>
           </label>
@@ -214,37 +207,15 @@ function DiscoverView({ onSearch }: { onSearch: (query: string, options: SearchO
           )}
           <div className="console-actions">
             <button type="button" className="text-button" onClick={() => setAdvanced(!advanced)}>{advanced ? "收起条件" : "高级约束"} <span>{advanced ? "−" : "+"}</span></button>
-            <button className="primary-button" disabled={loading}>{loading ? <><i className="spinner" /> 正在搜索</> : <>查看候选项目 <b>→</b></>}</button>
+            <button className="primary-button" disabled={loading}>{loading ? <><i className="spinner" /> 正在查找</> : <>搜索项目 <b>↵</b></>}</button>
           </div>
           {loading && <div className="search-progress" aria-live="polite"><span className="active">解析条件</span><span className="active">混合检索</span><span className="active">深度调查</span><span>证据验证</span></div>}
         </form>
       </section>
 
       <section className="sample-strip">
-        <span>试试这些任务</span>
-        {sampleQueries.map((item, index) => <button key={item} onClick={() => setQuery(item)}><i>0{index + 1}</i>{item}</button>)}
-      </section>
-
-      <section className="intelligence-grid">
-        <article className="panel process-panel">
-          <div className="panel-title"><span>搜索过程</span><small>四个步骤</small></div>
-          <div className="process-flow">
-            {[
-              ["01", "解析目标", "硬条件 / 偏好 / 排除项"],
-              ["02", "查找仓库", "GitHub 与本地索引"],
-              ["03", "检查项目", "文档 / 活跃度 / 工程信号"],
-              ["04", "整理结果", "理由 / 风险 / 原始来源"],
-            ].map((step, index) => (
-              <div key={step[0]}><b>{step[0]}</b><span><strong>{step[1]}</strong><small>{step[2]}</small></span>{index < 3 && <i>→</i>}</div>
-            ))}
-          </div>
-        </article>
-        <article className="panel live-panel">
-          <div className="panel-title"><span>结果里会看到</span><small>不只是一张榜单</small></div>
-          <div className="pulse-row"><span>01</span><b>为什么推荐这个项目</b></div>
-          <div className="pulse-row"><span>02</span><b>开始之前需要注意什么</b></div>
-          <div className="pulse-row"><span>03</span><b>结论来自哪里、何时更新</b></div>
-        </article>
+        <span>也可以从这里开始</span>
+        {sampleQueries.map((item) => <button key={item} onClick={() => setQuery(item)}>{item}<i>→</i></button>)}
       </section>
     </div>
   );
@@ -263,27 +234,20 @@ function ResultCard({
 }) {
   return (
     <article className="result-card">
-      <div className="rank-column"><span>#{String(repo.rank).padStart(2, "0")}</span><button className={selected ? "selected" : ""} onClick={onSelect} aria-label="加入对比">{selected ? "✓" : "+"}</button></div>
       <div className="result-main">
         <div className="repo-heading">
-          <div><span className="repo-owner">{repo.full_name.split("/")[0]} /</span><h3>{repo.full_name.split("/")[1]}</h3></div>
-          <div className="repo-meta"><span>★ {formatNumber(repo.stars)}</span><span>{repo.language}</span><span>{repo.license_spdx ?? "NO LICENSE"}</span></div>
+          <div><span className="result-rank">{String(repo.rank).padStart(2, "0")}</span><span className="repo-owner">{repo.full_name.split("/")[0]} /</span><h3>{repo.full_name.split("/")[1]}</h3></div>
+          <strong className="plain-score">{repo.score.toFixed(0)}<small>/100</small></strong>
         </div>
         <p>{repo.description}</p>
-        <div className="reason-row">{repo.reasons.slice(0, 3).map((reason) => <span key={reason}><i />{reason}</span>)}</div>
-        <div className="risk-line"><b>需要留意</b><span>{repo.risks[0]}</span></div>
-        <div className="result-footer">
-          <div className="evidence-links">
-            <span>{repo.retrieval_sources?.includes("github_live") ? "GitHub 实时" : "本地索引"}</span>
-            <span>仓库更新 {repo.pushed_at?.slice(0, 10)}</span>
-          </div>
-          <button onClick={onDetail}>查看项目档案 <b>→</b></button>
+        <div className="repo-meta"><span>★ {formatNumber(repo.stars)}</span><span>{repo.language}</span><span>{repo.license_spdx ?? "无许可证"}</span><span>更新于 {repo.pushed_at?.slice(0, 10)}</span></div>
+        <div className="evidence-ledger">
+          <div><b>推荐</b><span>{repo.reasons.slice(0, 2).join("；")}</span></div>
+          <div className="ledger-risk"><b>留意</b><span>{repo.risks[0] || "未发现明显风险，仍建议阅读仓库说明。"}</span></div>
         </div>
-      </div>
-      <div className="score-column">
-        <ScoreDial value={repo.score} />
-        <div className="mini-bars">
-          {Object.entries(repo.score_breakdown).slice(0, 4).map(([key, value]) => <div key={key}><span>{scoreLabels[key] ?? key}</span><i><b style={{ width: `${Math.min(value / 35 * 100, 100)}%` }} /></i></div>)}
+        <div className="result-footer">
+          <span>{repo.retrieval_sources?.includes("github_live") ? "GitHub 实时数据" : "已同步索引"}</span>
+          <div><button className={`compare-toggle ${selected ? "selected" : ""}`} onClick={onSelect}>{selected ? "已加入对比" : "加入对比"}</button><button onClick={onDetail}>查看档案 →</button></div>
         </div>
       </div>
     </article>
@@ -320,11 +284,11 @@ function ResultsView({
     <div className="page page--results">
       <section className="results-header">
         <div>
-          <div className="kicker">搜索结果</div>
-          <h1>发现 <em>{data.eligible_candidate_count}</em> 个符合条件的项目</h1>
-          <p>从 {formatNumber(data.source_total_count)} 个候选中完成硬过滤与证据评分；实时结果与已同步索引会自动合并。</p>
+          <div className="kicker">{formatNumber(data.source_total_count)} repositories checked</div>
+          <h1>{data.eligible_candidate_count} 个项目值得继续看</h1>
+          <p>结果按需求匹配排序，不按热度排序。</p>
         </div>
-        <div className="run-stamp"><small>排序规则</small><b>{data.ranking_version}</b><span>可查看每条推荐的依据</span></div>
+        <button className="secondary-button" onClick={onNewSearch}>修改搜索</button>
       </section>
 
       {problem && <section className={`result-state result-state--${problem.kind}`}><Signal tone={problem.kind === "rate_limit" ? "amber" : "red"} /><div><small>{problem.kind === "rate_limit" ? "REQUEST LIMITED" : "SERVICE UNAVAILABLE"}</small><h2>{problem.title}</h2><p>{problem.message}</p><button className="primary-button" onClick={onNewSearch}>返回修改查询</button></div></section>}
@@ -332,62 +296,28 @@ function ResultsView({
       {!problem && data.retrieval?.github_status === "unavailable" && <div className="notice"><Signal tone="amber" /><span>GitHub 当前限流或暂不可用，本次结果来自已同步索引，页面已保留数据时间。</span></div>}
 
       {!problem && <section className="query-record">
-        <div><small>原始需求</small><p>“{data.query}”</p></div>
-        <button onClick={onNewSearch}>编辑查询</button>
+        <div><small>你的需求</small><p>{data.query}</p></div>
         <div className="constraint-record">
-          <span>目标 · {data.constraints.purpose === "contribution" ? "首次贡献" : "学习项目"}</span>
-          <span>语言 · {data.constraints.language}</span>
-          {data.constraints.technologies.map((item) => <span key={item}>技术 · {item}</span>)}
-          {data.constraints.licenses.map((item) => <span key={item}>许可 · {item}</span>)}
-          {data.constraints.pushed_after && <span>更新 · {data.constraints.pushed_after} 之后</span>}
-          {data.constraints.weekly_hours && <span>时间 · 每周 {data.constraints.weekly_hours} 小时</span>}
-          {data.constraints.platform && <span>平台 · {data.constraints.platform}</span>}
-          {data.constraints.project_size && <span>规模 · {data.constraints.project_size === "small" ? "小型" : data.constraints.project_size === "medium" ? "中型" : "大型"}</span>}
+          <span>{data.constraints.purpose === "contribution" ? "首次贡献" : "学习项目"}</span>
+          <span>{data.constraints.language}</span>
+          {data.constraints.technologies.map((item) => <span key={item}>{item}</span>)}
+          {data.constraints.licenses.map((item) => <span key={item}>{item}</span>)}
+          {data.constraints.pushed_after && <span>{data.constraints.pushed_after} 后更新</span>}
+          {data.constraints.platform && <span>{data.constraints.platform}</span>}
         </div>
-        <code>{data.generated_github_query}</code>
+        {agentRun && <details className="search-trace"><summary>查看搜索过程</summary><p>{agentRun.interpretation.summary}</p>{agentRun.steps.map((step) => <span key={step.node}><Signal tone={step.status === "completed" ? "green" : "amber"} />{step.summary}<small>{step.duration_ms}ms</small></span>)}</details>}
       </section>}
 
       {!problem && data.results.length === 0 && <section className="result-state result-state--empty"><span className="empty-mark">0</span><div><small>NO MATCHES</small><h2>这次没有项目通过全部条件</h2><p>GitHub 已完成检索，但语言、许可证、更新时间或规模条件组合后没有留下候选。可以先去掉一到两个硬条件再试。</p><button className="primary-button" onClick={onNewSearch}>放宽搜索条件</button></div></section>}
 
       {!problem && data.results.length > 0 && <div className="results-layout">
         <section className="results-list">
-          <div className="list-toolbar"><span>共 <b>{data.results.length}</b> 个候选项目</span><div><button className={sortBy === "match" ? "active" : ""} onClick={() => setSortBy("match")}>综合匹配</button><button className={sortBy === "activity" ? "active" : ""} onClick={() => setSortBy("activity")}>最近活跃</button><button className={sortBy === "approachable" ? "active" : ""} onClick={() => setSortBy("approachable")}>规模较小</button></div></div>
+          <div className="list-toolbar"><span>{data.results.length} 个结果</span><div><button className={sortBy === "match" ? "active" : ""} onClick={() => setSortBy("match")}>最佳匹配</button><button className={sortBy === "activity" ? "active" : ""} onClick={() => setSortBy("activity")}>最近活跃</button><button className={sortBy === "approachable" ? "active" : ""} onClick={() => setSortBy("approachable")}>较小项目</button></div></div>
           {sortedResults.map((repo) => (
             <ResultCard key={repo.full_name} repo={repo} selected={compare.includes(repo.full_name)} onSelect={() => toggleCompare(repo.full_name)} onDetail={() => onDetail(repo)} />
           ))}
         </section>
 
-        <aside className="evidence-rail">
-          {agentRun && <article className="panel">
-            <div className="panel-title"><span>Agent 执行</span><small>{agentRun.interpretation.source === "model" ? agentRun.interpretation.model : "规则降级"}</small></div>
-            <div className="agent-interpretation">
-              <b>{agentRun.interpretation.source === "model" ? "模型理解" : "当前未使用模型"}</b>
-              <p>{agentRun.interpretation.summary}</p>
-              {agentRun.interpretation.search_terms.length > 0 && <span>检索词：{agentRun.interpretation.search_terms.join(" · ")}</span>}
-              {agentRun.interpretation.fallback_reason && <span>{agentRun.interpretation.fallback_reason}</span>}
-            </div>
-            {agentRun.steps.map((step) => <div className="audit-row" key={step.node}><Signal tone={step.status === "completed" ? "green" : "amber"} /><span>{step.summary}</span><b>{step.duration_ms}ms</b></div>)}
-            <p className="panel-note">证据支持率 {agentRun.verification.length ? Math.round(agentRun.verification.reduce((sum, item) => sum + item.support_ratio, 0) / agentRun.verification.length * 100) : 0}% · 最多重试 {agentRun.retry_count} 次</p>
-          </article>}
-          <article className="panel">
-            <div className="panel-title"><span>已应用的条件</span><small>搜索范围</small></div>
-            {[
-              ["语言", "Python", "green"],
-              ["许可证", data.constraints.licenses.join(" / ") || "不限", "green"],
-              ["归档状态", "已排除", "green"],
-              ["活跃时间", data.constraints.pushed_after || "不限", "green"],
-            ].map((row) => <div className="audit-row" key={row[0]}><Signal tone={row[2] as "green"} /><span>{row[0]}</span><b>{row[1]}</b></div>)}
-          </article>
-          <article className="panel confidence-card">
-            <div className="panel-title"><span>检索来源</span><small>当前结果</small></div>
-            <strong>{data.retrieval?.github_status === "unavailable" ? "索引" : "混合"}</strong>
-            <p>本地索引 {data.retrieval?.local_candidates ?? 0} 个，GitHub 实时 {data.retrieval?.github_candidates ?? data.results.length} 个；相同仓库已自动去重。</p>
-            <div className="confidence-scale"><i /><i /><i className="active" /></div>
-          </article>
-          <article className="panel compare-hint">
-            <small>对比列表</small><strong>{compare.length}<span>/3</span></strong><p>最多选择三个项目并排查看</p>
-          </article>
-        </aside>
       </div>}
     </div>
   );
@@ -656,7 +586,7 @@ function SettingsView({ connection, onApiChanged }: { connection: ConnectionStat
         <article className="panel settings-card">
           <div className="settings-card-head"><div><small>VERSION</small><h2>GitSeek {APP_VERSION}</h2></div><span className="version-pill">Windows / Web</span></div>
           <p className="settings-copy">手动检查 GitHub Releases。发现新版本时会提供下载入口；正式自动安装将在签名密钥配置后启用。</p>
-          <div className="settings-actions"><button className="primary-button" onClick={checkUpdate} disabled={checkingUpdate}>{checkingUpdate ? "正在检查…" : "检查更新"}</button><a className="secondary-button" href={updateResult?.url || RELEASES_URL} target="_blank" rel="noreferrer">查看发布页 ↗</a></div>
+          <div className="settings-actions"><button className="primary-button" onClick={checkUpdate} disabled={checkingUpdate}>{checkingUpdate ? "正在检查…" : "检查更新"}</button><InstallAppButton /><a className="secondary-button" href={updateResult?.url || RELEASES_URL} target="_blank" rel="noreferrer">查看发布页 ↗</a></div>
           {updateMessage && <p className="settings-message">{updateMessage}</p>}
         </article>
 
