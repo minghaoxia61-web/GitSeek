@@ -1,2 +1,1 @@
-"""Domain contracts shared by OpenScout applications."""
-
+"""Domain contracts shared by GitSeek applications."""

@@ -12,7 +12,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "openscout-api"
+    app_name: str = "gitseek-api"
     app_version: str = "0.1.0"
     environment: str = Field(default="local", validation_alias="OPENSCOUT_ENV")
     api_host: str = "0.0.0.0"

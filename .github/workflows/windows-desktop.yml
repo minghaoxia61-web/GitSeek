@@ -7,12 +7,25 @@ on:
         description: Public FastAPI base URL, without a trailing slash
         required: true
         type: string
+      app_version:
+        description: Application version using MAJOR.MINOR.PATCH
+        required: true
+        default: 0.1.0
+        type: string
+      publish_release:
+        description: Publish installers as a GitHub prerelease
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   build-windows:
     runs-on: windows-latest
     permissions:
-      contents: read
+      contents: write
+    env:
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
     steps:
       - name: Check out repository
@@ -44,8 +57,41 @@ jobs:
           DESKTOP_API_BASE_URL: ${{ inputs.api_base_url }}
         run: '"VITE_API_BASE_URL=$env:DESKTOP_API_BASE_URL" | Set-Content apps/web/.env.desktop'
 
+      - name: Set application version
+        run: pnpm --dir apps/desktop run version:set -- ${{ inputs.app_version }}
+
       - name: Build NSIS and MSI installers
-        run: pnpm --dir apps/desktop run build
+        shell: pwsh
+        run: |
+          if ($env:WINDOWS_CERTIFICATE) {
+            $certificatePath = Join-Path $env:RUNNER_TEMP "gitseek-signing.pfx"
+            [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+            $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+            $certificate = Import-PfxCertificate -FilePath $certificatePath -CertStoreLocation Cert:\CurrentUser\My -Password $password
+            $configPath = Join-Path $env:RUNNER_TEMP "tauri-signing.json"
+            @{
+              bundle = @{
+                windows = @{
+                  certificateThumbprint = $certificate.Thumbprint
+                  digestAlgorithm = "sha256"
+                  timestampUrl = "http://timestamp.digicert.com"
+                }
+              }
+            } | ConvertTo-Json -Depth 5 | Set-Content $configPath
+            pnpm --dir apps/desktop tauri build --config $configPath
+          } else {
+            Write-Output "No Windows signing certificate configured; producing unsigned installers."
+            pnpm --dir apps/desktop run build
+          }
+
+      - name: Generate SHA-256 checksums
+        shell: pwsh
+        run: |
+          $bundleRoot = "apps/desktop/src-tauri/target/release/bundle"
+          Get-ChildItem $bundleRoot -Recurse -File | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash *$($_.Name)"
+          } | Set-Content "$bundleRoot/SHA256SUMS.txt"
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
@@ -53,3 +99,16 @@ jobs:
           name: GitSeek-Windows
           path: apps/desktop/src-tauri/target/release/bundle/**
           if-no-files-found: error
+
+      - name: Publish GitHub prerelease
+        if: ${{ inputs.publish_release }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APP_VERSION: ${{ inputs.app_version }}
+        run: |
+          $bundleRoot = "apps/desktop/src-tauri/target/release/bundle"
+          gh release create "v$env:APP_VERSION" --prerelease --title "GitSeek $env:APP_VERSION" --notes "Windows preview release. Download the NSIS setup executable for normal installation."
+          Get-ChildItem $bundleRoot -Recurse -File | ForEach-Object {
+            gh release upload "v$env:APP_VERSION" $_.FullName
+          }

@@ -10,8 +10,7 @@ def test_health_endpoint() -> None:
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
-        "service": "openscout-api",
+        "service": "gitseek-api",
         "version": "0.1.0",
         "environment": "local",
     }
-

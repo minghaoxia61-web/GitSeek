@@ -1,4 +1,4 @@
-export type View = "discover" | "results" | "detail" | "compare" | "evals";
+export type View = "discover" | "results" | "detail" | "compare" | "evals" | "settings";
 
 export type Recommendation = {
   rank: number;

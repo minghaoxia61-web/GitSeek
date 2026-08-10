@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import { apiUrl } from "./api";
+import { ApiError, apiFetch, checkApiHealth, getApiBaseUrl, getDefaultApiBaseUrl, resetApiBaseUrl, setApiBaseUrl } from "./api";
+import { APP_VERSION, checkForUpdates, RELEASES_URL, type ReleaseCheck } from "./appInfo";
 import { demoResponse } from "./mockData";
 import type { AgentRunResponse, ContributionIssue, EvaluationSummary, Recommendation, RepositoryInvestigation, SearchResponse, View } from "./types";
 
@@ -11,6 +12,18 @@ type SearchOptions = {
   licenses: string[];
   recentOnly: boolean;
   projectSize: "small" | "medium" | "large" | null;
+};
+
+type ConnectionStatus = {
+  state: "checking" | "online" | "offline";
+  label: string;
+  detail: string;
+};
+
+type SearchProblem = {
+  kind: "network" | "rate_limit" | "server" | "request";
+  title: string;
+  message: string;
 };
 
 const sampleQueries = [
@@ -24,6 +37,7 @@ const navItems: { id: View; label: string; eyebrow: string }[] = [
   { id: "results", label: "候选项目", eyebrow: "RESULTS" },
   { id: "compare", label: "项目对比", eyebrow: "COMPARE" },
   { id: "evals", label: "质量记录", eyebrow: "QUALITY" },
+  { id: "settings", label: "应用设置", eyebrow: "SETTINGS" },
 ];
 
 function formatNumber(value: number) {
@@ -39,8 +53,8 @@ const scoreLabels: Record<string, string> = {
 };
 
 function getDeviceId() {
-  const key = "openscout:device-id";
-  const existing = localStorage.getItem(key);
+  const key = "gitseek:device-id";
+  const existing = localStorage.getItem(key) || localStorage.getItem("openscout:device-id");
   if (existing) return existing;
   const created = crypto.randomUUID();
   localStorage.setItem(key, created);
@@ -67,19 +81,21 @@ function Shell({
   view,
   setView,
   compareCount,
+  connection,
   children,
 }: {
   view: View;
   setView: (view: View) => void;
   compareCount: number;
+  connection: ConnectionStatus;
   children: React.ReactNode;
 }) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <button className="brand" onClick={() => setView("discover")} aria-label="回到 OpenScout 首页">
+        <button className="brand" onClick={() => setView("discover")} aria-label="回到 GitSeek 首页">
           <span className="brand-mark"><i /><i /><i /></span>
-          <span><b>OpenScout</b><small>开源项目研究工具</small></span>
+          <span><b>GitSeek</b><small>开源项目研究工具</small></span>
         </button>
 
         <nav className="side-nav" aria-label="主导航">
@@ -103,16 +119,16 @@ function Shell({
         </div>
 
         <div className="sidebar-footer">
-          <span className="avatar">OS</span>
+          <span className="avatar">GS</span>
           <span><b>个人工作区</b><small>本地优先</small></span>
         </div>
       </aside>
 
       <div className="workspace">
         <header className="topbar">
-          <div className="breadcrumb"><span>OpenScout</span><i>/</i><b>{view === "discover" ? "发现项目" : view === "evals" ? "质量记录" : view === "compare" ? "项目对比" : "候选项目"}</b></div>
+          <div className="breadcrumb"><span>GitSeek</span><i>/</i><b>{view === "discover" ? "发现项目" : view === "evals" ? "质量记录" : view === "compare" ? "项目对比" : view === "settings" ? "应用设置" : "候选项目"}</b></div>
           <div className="top-actions">
-            <span className="system-chip"><Signal /> 公开数据</span>
+            <button className={`system-chip system-chip--${connection.state}`} onClick={() => setView("settings")} title={connection.detail}><Signal tone={connection.state === "online" ? "green" : connection.state === "offline" ? "red" : "amber"} /> {connection.label}</button>
             <a href="https://github.com/minghaoxia61-web/GitSeek" target="_blank" rel="noreferrer" className="repo-link">查看源码 ↗</a>
           </div>
         </header>
@@ -161,7 +177,7 @@ function DiscoverView({ onSearch }: { onSearch: (query: string, options: SearchO
         <div className="hero-copy">
           <div className="kicker">开源项目发现</div>
           <h1>找到适合现在的你，<br /><em>而不只是最热门的项目。</em></h1>
-          <p>说清楚技术栈、可投入时间和目标。OpenScout 会先排除不符合条件的仓库，再把推荐理由、风险和原始来源放在一起。</p>
+          <p>说清楚技术栈、可投入时间和目标。GitSeek 会先排除不符合条件的仓库，再把推荐理由、风险和原始来源放在一起。</p>
           <div className="hero-proof">
             <div><strong>先筛选</strong><span>许可证、语言与活跃时间</span></div>
             <div><strong>再解释</strong><span>每条结论都能查看来源</span></div>
@@ -281,7 +297,8 @@ function ResultsView({
   toggleCompare,
   onDetail,
   onNewSearch,
-  fallback,
+  problem,
+  notice,
 }: {
   data: SearchResponse;
   agentRun: AgentRunResponse | null;
@@ -289,7 +306,8 @@ function ResultsView({
   toggleCompare: (name: string) => void;
   onDetail: (repo: Recommendation) => void;
   onNewSearch: () => void;
-  fallback: boolean;
+  problem: SearchProblem | null;
+  notice: string | null;
 }) {
   const [sortBy, setSortBy] = useState<"match" | "activity" | "approachable">("match");
   const sortedResults = useMemo(() => [...data.results].sort((left, right) => {
@@ -309,10 +327,11 @@ function ResultsView({
         <div className="run-stamp"><small>排序规则</small><b>{data.ranking_version}</b><span>可查看每条推荐的依据</span></div>
       </section>
 
-      {fallback && <div className="notice"><Signal tone="amber" /><span>后端暂时不可用，当前展示经过校准的演示数据。启动 API 后重新搜索即可切换为实时结果。</span></div>}
-      {!fallback && data.retrieval?.github_status === "unavailable" && <div className="notice"><Signal tone="amber" /><span>GitHub 当前限流或暂不可用，本次结果来自已同步索引，页面已保留数据时间。</span></div>}
+      {problem && <section className={`result-state result-state--${problem.kind}`}><Signal tone={problem.kind === "rate_limit" ? "amber" : "red"} /><div><small>{problem.kind === "rate_limit" ? "REQUEST LIMITED" : "SERVICE UNAVAILABLE"}</small><h2>{problem.title}</h2><p>{problem.message}</p><button className="primary-button" onClick={onNewSearch}>返回修改查询</button></div></section>}
+      {notice && !problem && <div className="notice"><Signal tone="amber" /><span>{notice}</span></div>}
+      {!problem && data.retrieval?.github_status === "unavailable" && <div className="notice"><Signal tone="amber" /><span>GitHub 当前限流或暂不可用，本次结果来自已同步索引，页面已保留数据时间。</span></div>}
 
-      <section className="query-record">
+      {!problem && <section className="query-record">
         <div><small>原始需求</small><p>“{data.query}”</p></div>
         <button onClick={onNewSearch}>编辑查询</button>
         <div className="constraint-record">
@@ -326,9 +345,11 @@ function ResultsView({
           {data.constraints.project_size && <span>规模 · {data.constraints.project_size === "small" ? "小型" : data.constraints.project_size === "medium" ? "中型" : "大型"}</span>}
         </div>
         <code>{data.generated_github_query}</code>
-      </section>
+      </section>}
 
-      <div className="results-layout">
+      {!problem && data.results.length === 0 && <section className="result-state result-state--empty"><span className="empty-mark">0</span><div><small>NO MATCHES</small><h2>这次没有项目通过全部条件</h2><p>GitHub 已完成检索，但语言、许可证、更新时间或规模条件组合后没有留下候选。可以先去掉一到两个硬条件再试。</p><button className="primary-button" onClick={onNewSearch}>放宽搜索条件</button></div></section>}
+
+      {!problem && data.results.length > 0 && <div className="results-layout">
         <section className="results-list">
           <div className="list-toolbar"><span>共 <b>{data.results.length}</b> 个候选项目</span><div><button className={sortBy === "match" ? "active" : ""} onClick={() => setSortBy("match")}>综合匹配</button><button className={sortBy === "activity" ? "active" : ""} onClick={() => setSortBy("activity")}>最近活跃</button><button className={sortBy === "approachable" ? "active" : ""} onClick={() => setSortBy("approachable")}>规模较小</button></div></div>
           {sortedResults.map((repo) => (
@@ -367,7 +388,7 @@ function ResultsView({
             <small>对比列表</small><strong>{compare.length}<span>/3</span></strong><p>最多选择三个项目并排查看</p>
           </article>
         </aside>
-      </div>
+      </div>}
     </div>
   );
 }
@@ -463,7 +484,7 @@ function DetailView({
             <div className="panel-title"><span>适合开始的 Issue</span><small>{issueStatus === "ready" ? `${issues.length} 个候选` : issueStatus === "loading" ? "正在刷新状态" : "暂不可用"}</small></div>
             {issueStatus === "loading" && <div className="issues-loading"><i className="spinner" /> 正在检查开放状态、认领情况与任务描述…</div>}
             {issueStatus === "ready" && issues.map((issue) => <a className="issue-row" href={issue.html_url} target="_blank" rel="noreferrer" key={issue.number} onClick={() => onFeedback("opened_issue")}><span className={`difficulty ${issue.difficulty}`}>{issue.difficulty === "easy" ? "容易" : issue.difficulty === "medium" ? "中等" : "较难"}</span><div><b>#{issue.number} {issue.title}</b><p>{issue.reasons.join(" · ")}{issue.risks[0] ? `；${issue.risks[0]}` : ""}</p></div><strong>{issue.score.toFixed(0)}</strong></a>)}
-            {issueStatus === "ready" && !issues.length && <p className="empty-copy">当前没有找到未认领且信息足够的开放 Issue。OpenScout 不会为了填满列表推荐不确定任务。</p>}
+            {issueStatus === "ready" && !issues.length && <p className="empty-copy">当前没有找到未认领且信息足够的开放 Issue。GitSeek 不会为了填满列表推荐不确定任务。</p>}
             {issueStatus === "unavailable" && <p className="empty-copy">Issue 状态暂时无法刷新，请稍后再试或直接到 GitHub 查看。</p>}
           </article>
         </section>
@@ -510,9 +531,7 @@ function EvalsView() {
   async function load(method: "GET" | "POST" = "GET") {
     if (method === "POST") setRunning(true);
     try {
-      const response = await fetch(apiUrl(method === "GET" ? "/api/v1/evals/summary" : "/api/v1/evals/run"), { method });
-      if (!response.ok) throw new Error("Evaluation API unavailable");
-      setSummary(await response.json() as EvaluationSummary);
+      setSummary(await apiFetch<EvaluationSummary>(method === "GET" ? "/api/v1/evals/summary" : "/api/v1/evals/run", { method }));
       setStatus("ready");
     } catch {
       setStatus("unavailable");
@@ -539,6 +558,117 @@ function EvalsView() {
   );
 }
 
+function problemFrom(error: unknown): SearchProblem {
+  if (error instanceof ApiError) {
+    if (error.kind === "rate_limit") return { kind: error.kind, title: "GitHub 请求暂时达到限额", message: "稍等几分钟再试，或检查云端 GITHUB_TOKEN 是否仍然有效。" };
+    if (error.kind === "network") return { kind: error.kind, title: "没有连接到 GitSeek 服务", message: "请检查网络，或在应用设置中确认后端地址。" };
+    if (error.kind === "server") return { kind: error.kind, title: "云端服务暂时没有完成请求", message: error.message };
+    return { kind: error.kind, title: "请求没有被服务接受", message: error.message };
+  }
+  return { kind: "network", title: "没有连接到 GitSeek 服务", message: "请检查网络，或在应用设置中确认后端地址。" };
+}
+
+function emptySearchResponse(query: string, options: SearchOptions, pushedAfter: string | null): SearchResponse {
+  return {
+    session_id: "",
+    query,
+    generated_github_query: "",
+    constraints: {
+      purpose: options.purpose,
+      language: "未确定",
+      technologies: [],
+      licenses: options.licenses,
+      exclude_archived: true,
+      pushed_after: pushedAfter,
+      weekly_hours: options.weeklyHours,
+      platform: options.platform,
+      project_size: options.projectSize,
+    },
+    source_total_count: 0,
+    eligible_candidate_count: 0,
+    ranking_version: "hybrid-index-baseline-v1",
+    results: [],
+    retrieval: { local_candidates: 0, github_candidates: 0, github_status: "unavailable", index_freshest_at: null },
+  };
+}
+
+function SettingsView({ connection, onApiChanged }: { connection: ConnectionStatus; onApiChanged: () => void }) {
+  const [apiBase, setApiBase] = useState(getApiBaseUrl());
+  const [saveMessage, setSaveMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [updateResult, setUpdateResult] = useState<ReleaseCheck | null>(null);
+  const [updateMessage, setUpdateMessage] = useState("");
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  async function saveAndTest(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setSaveMessage("");
+    let saved = false;
+    try {
+      const normalized = setApiBaseUrl(apiBase);
+      saved = true;
+      setApiBase(normalized);
+      onApiChanged();
+      const health = await checkApiHealth(normalized);
+      setSaveMessage(`连接成功 · ${health.service}${health.environment ? ` · ${health.environment}` : ""}`);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "暂时无法连接";
+      setSaveMessage(saved ? `已保存，但检测失败：${detail}` : `无法保存：${detail}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function restoreDefault() {
+    const restored = resetApiBaseUrl();
+    setApiBase(restored);
+    setSaveMessage("已恢复安装包默认地址，正在重新检测连接。");
+    onApiChanged();
+  }
+
+  async function checkUpdate() {
+    setCheckingUpdate(true);
+    setUpdateMessage("");
+    try {
+      const result = await checkForUpdates();
+      setUpdateResult(result);
+      setUpdateMessage(result.state === "available" ? `发现新版本 ${result.latestVersion}` : result.state === "current" ? "当前已经是最新版本" : "暂时没有发布正式版本");
+    } catch (error) {
+      setUpdateMessage(error instanceof Error ? error.message : "暂时无法检查更新");
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }
+
+  return (
+    <div className="page settings-page">
+      <section className="page-heading"><div className="kicker">应用设置</div><h1>连接与版本</h1><p>后端地址保存在当前设备上，不会上传；DeepSeek 与 GitHub 密钥仍只存在于云端。</p></section>
+      <div className="settings-grid">
+        <form className="panel settings-card" onSubmit={saveAndTest}>
+          <div className="settings-card-head"><div><small>BACKEND</small><h2>云端服务</h2></div><span className={`connection-badge connection-badge--${connection.state}`}><Signal tone={connection.state === "online" ? "green" : connection.state === "offline" ? "red" : "amber"} />{connection.label}</span></div>
+          <label className="settings-field"><span>API 地址</span><input value={apiBase} onChange={(event) => setApiBase(event.target.value)} placeholder="留空表示使用当前站点；桌面版建议填写 https://…" /></label>
+          <p className="settings-help">当前默认：{getDefaultApiBaseUrl() || "跟随当前站点"}</p>
+          <div className="settings-actions"><button className="primary-button" disabled={saving}>{saving ? "正在检测…" : "保存并检测"}</button><button type="button" className="secondary-button" onClick={restoreDefault}>恢复默认</button></div>
+          {saveMessage && <p className="settings-message">{saveMessage}</p>}
+        </form>
+
+        <article className="panel settings-card">
+          <div className="settings-card-head"><div><small>VERSION</small><h2>GitSeek {APP_VERSION}</h2></div><span className="version-pill">Windows / Web</span></div>
+          <p className="settings-copy">手动检查 GitHub Releases。发现新版本时会提供下载入口；正式自动安装将在签名密钥配置后启用。</p>
+          <div className="settings-actions"><button className="primary-button" onClick={checkUpdate} disabled={checkingUpdate}>{checkingUpdate ? "正在检查…" : "检查更新"}</button><a className="secondary-button" href={updateResult?.url || RELEASES_URL} target="_blank" rel="noreferrer">查看发布页 ↗</a></div>
+          {updateMessage && <p className="settings-message">{updateMessage}</p>}
+        </article>
+
+        <article className="panel settings-card settings-card--wide">
+          <div className="settings-card-head"><div><small>DIAGNOSTICS</small><h2>连接诊断</h2></div></div>
+          <div className="diagnostic-list"><div><span>服务状态</span><b>{connection.label}</b></div><div><span>当前地址</span><b>{getApiBaseUrl() || window.location.origin}</b></div><div><span>最近结果</span><b>{connection.detail}</b></div></div>
+        </article>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [view, setView] = useState<View>("discover");
   const [data, setData] = useState<SearchResponse>(demoResponse);
@@ -548,8 +678,30 @@ export default function App() {
   const [issues, setIssues] = useState<ContributionIssue[]>([]);
   const [issueStatus, setIssueStatus] = useState<"loading" | "ready" | "unavailable">("unavailable");
   const [compare, setCompare] = useState<string[]>([]);
-  const [fallback, setFallback] = useState(false);
   const [agentRun, setAgentRun] = useState<AgentRunResponse | null>(null);
+  const [searchProblem, setSearchProblem] = useState<SearchProblem | null>(null);
+  const [searchNotice, setSearchNotice] = useState<string | null>(null);
+  const [apiRevision, setApiRevision] = useState(0);
+  const [connection, setConnection] = useState<ConnectionStatus>({ state: "checking", label: "正在连接", detail: "正在检测云端服务" });
+
+  useEffect(() => {
+    let active = true;
+    async function refreshConnection(showChecking = false) {
+      if (showChecking) setConnection({ state: "checking", label: "正在连接", detail: "正在检测云端服务" });
+      const started = performance.now();
+      try {
+        const health = await checkApiHealth();
+        if (!active) return;
+        setConnection({ state: "online", label: "服务已连接", detail: `${health.service} · ${Math.round(performance.now() - started)}ms` });
+      } catch (error) {
+        if (!active) return;
+        setConnection({ state: "offline", label: "服务未连接", detail: error instanceof Error ? error.message : "连接检测失败" });
+      }
+    }
+    void refreshConnection(true);
+    const timer = window.setInterval(() => void refreshConnection(), 60_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [apiRevision]);
 
   async function search(query: string, options: SearchOptions) {
     const recentDate = new Date();
@@ -565,44 +717,32 @@ export default function App() {
       pushed_after: options.recentOnly ? recentDate.toISOString().slice(0, 10) : null,
       investigate_limit: 2,
     };
+    const pushedAfter = options.recentOnly ? recentDate.toISOString().slice(0, 10) : null;
+    setSearchProblem(null);
+    setSearchNotice(null);
     try {
-      const response = await fetch(apiUrl("/api/v1/agent/runs"), {
+      const run = await apiFetch<AgentRunResponse>("/api/v1/agent/runs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
       });
-      if (!response.ok) throw new Error("Agent API unavailable");
-      const run = await response.json() as AgentRunResponse;
       setAgentRun(run);
       setData(run.search);
-      setFallback(false);
-    } catch {
+    } catch (agentError) {
       try {
-        const response = await fetch(apiUrl("/api/v1/search"), {
+        const response = await apiFetch<SearchResponse>("/api/v1/search", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),
         });
-        if (!response.ok) throw new Error("Search API unavailable");
-        setData(await response.json() as SearchResponse);
+        setData(response);
         setAgentRun(null);
-        setFallback(false);
-      } catch {
-        setData({
-          ...demoResponse,
-          query,
-          constraints: {
-            ...demoResponse.constraints,
-            purpose: options.purpose,
-            weekly_hours: options.weeklyHours,
-            platform: options.platform,
-            project_size: options.projectSize,
-            licenses: options.licenses,
-            pushed_after: options.recentOnly ? recentDate.toISOString().slice(0, 10) : null,
-          },
-        });
+        const agentProblem = problemFrom(agentError);
+        setSearchNotice(agentProblem.kind === "rate_limit" ? "Agent 请求达到限额，已自动切换为基础搜索。" : "Agent 暂时不可用，已自动切换为基础搜索。");
+      } catch (searchError) {
+        setData(emptySearchResponse(query, options, pushedAfter));
         setAgentRun(null);
-        setFallback(true);
+        setSearchProblem(problemFrom(searchError));
       }
     }
     setView("results");
@@ -620,22 +760,14 @@ export default function App() {
     setIssueStatus("loading");
     setView("detail");
     const [owner, name] = repo.full_name.split("/");
-    fetch(apiUrl(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/investigate`))
-      .then((response) => {
-        if (!response.ok) throw new Error("Investigation API unavailable");
-        return response.json() as Promise<RepositoryInvestigation>;
-      })
+    apiFetch<RepositoryInvestigation>(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/investigate`)
       .then((payload) => {
         setInvestigation(payload);
         setInvestigationStatus("ready");
       })
       .catch(() => setInvestigationStatus("unavailable"));
 
-    fetch(apiUrl(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues?limit=5`))
-      .then((response) => {
-        if (!response.ok) throw new Error("Issue API unavailable");
-        return response.json() as Promise<{ issues: ContributionIssue[] }>;
-      })
+    apiFetch<{ issues: ContributionIssue[] }>(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues?limit=5`)
       .then((payload) => {
         setIssues(payload.issues);
         setIssueStatus("ready");
@@ -647,29 +779,29 @@ export default function App() {
     let deviceId: string | null = null;
     try {
       deviceId = getDeviceId();
-      const feedbackLog = JSON.parse(localStorage.getItem("openscout:feedback") ?? "[]") as Array<Record<string, string>>;
-      localStorage.setItem("openscout:feedback", JSON.stringify([...feedbackLog.slice(-99), { repository: selectedRepo.full_name, action, query: data.query, createdAt: new Date().toISOString() }]));
+      const feedbackLog = JSON.parse(localStorage.getItem("gitseek:feedback") ?? localStorage.getItem("openscout:feedback") ?? "[]") as Array<Record<string, string>>;
+      localStorage.setItem("gitseek:feedback", JSON.stringify([...feedbackLog.slice(-99), { repository: selectedRepo.full_name, action, query: data.query, createdAt: new Date().toISOString() }]));
       if (action === "saved") {
-        const stored = JSON.parse(localStorage.getItem("openscout:saved") ?? "[]") as string[];
-        localStorage.setItem("openscout:saved", JSON.stringify([...new Set([...stored, selectedRepo.full_name])]));
+        const stored = JSON.parse(localStorage.getItem("gitseek:saved") ?? localStorage.getItem("openscout:saved") ?? "[]") as string[];
+        localStorage.setItem("gitseek:saved", JSON.stringify([...new Set([...stored, selectedRepo.full_name])]));
       }
     } catch {
       // Storage can be unavailable in a locked-down browser; API feedback still proceeds.
     }
     try {
-      const requests = [fetch(apiUrl("/api/v1/feedback"), {
+      const requests = [apiFetch<unknown>("/api/v1/feedback", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             repository: selectedRepo.full_name,
             action,
             query: data.query,
-            session_id: fallback ? null : data.session_id,
+            session_id: data.session_id || null,
             device_id: deviceId,
           }),
         })];
       if (action === "saved" && deviceId) {
-        requests.push(fetch(apiUrl("/api/v1/saved"), {
+        requests.push(apiFetch<unknown>("/api/v1/saved", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ device_id: deviceId, repository: selectedRepo.full_name }),
@@ -684,12 +816,13 @@ export default function App() {
   const compareRepos = useMemo(() => data.results.filter((repo) => compare.includes(repo.full_name)), [compare, data.results]);
 
   return (
-    <Shell view={view} setView={setView} compareCount={compare.length}>
+    <Shell view={view} setView={setView} compareCount={compare.length} connection={connection}>
       {view === "discover" && <DiscoverView onSearch={search} />}
-      {view === "results" && <ResultsView data={data} agentRun={agentRun} compare={compare} toggleCompare={toggleCompare} fallback={fallback} onNewSearch={() => setView("discover")} onDetail={openDetail} />}
+      {view === "results" && <ResultsView data={data} agentRun={agentRun} compare={compare} toggleCompare={toggleCompare} problem={searchProblem} notice={searchNotice} onNewSearch={() => setView("discover")} onDetail={openDetail} />}
       {view === "detail" && <DetailView repo={selectedRepo} investigation={investigation} status={investigationStatus} issues={issues} issueStatus={issueStatus} onBack={() => setView("results")} onCompare={() => toggleCompare(selectedRepo.full_name)} onFeedback={submitFeedback} />}
       {view === "compare" && <CompareView repos={compareRepos} onDiscover={() => setView("results")} onDetail={openDetail} onRemove={toggleCompare} />}
       {view === "evals" && <EvalsView />}
+      {view === "settings" && <SettingsView connection={connection} onApiChanged={() => setApiRevision((current) => current + 1)} />}
     </Shell>
   );
 }

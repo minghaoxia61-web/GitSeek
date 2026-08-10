@@ -1,2 +1,1 @@
-"""OpenScout automated tests."""
-
+"""GitSeek automated tests."""

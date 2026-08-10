@@ -1,2 +1,1 @@
-"""OpenScout HTTP API."""
-
+"""GitSeek HTTP API."""

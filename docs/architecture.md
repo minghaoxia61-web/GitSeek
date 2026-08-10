@@ -1,6 +1,6 @@
-# OpenScout architecture
+# GitSeek architecture
 
-OpenScout uses a staged recommendation pipeline. Its Agent is a bounded orchestration layer around
+GitSeek uses a staged recommendation pipeline. Its Agent is a bounded orchestration layer around
 deterministic retrieval and evidence collection, so a run remains inspectable and reproducible.
 
 ```text
@@ -83,6 +83,6 @@ does not exist.
 ## Data freshness contract
 
 Repository rows keep GitHub timestamps separately from `fetched_at`. This distinction lets the
-system explain when GitHub activity happened and when OpenScout last verified it. Search response
+system explain when GitHub activity happened and when GitSeek last verified it. Search response
 ETags and rate-limit metadata are exposed by the client so later scheduler work can add conditional
 requests without changing the domain model.

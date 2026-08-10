@@ -121,7 +121,7 @@ async function github(path, params) {
     headers: {
       "Accept": "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "OpenScout-Public-Demo"
+      "User-Agent": "GitSeek-Public"
     }
   });
   if (response.status === 404) throw new Error("NOT_FOUND");
@@ -221,7 +221,7 @@ async function planQueryWithModel(query, body, env) {
           { role: "user", content: "Current date: " + new Date().toISOString().slice(0, 10) + "\\nRequest: " + query }
         ],
         reasoning: { effort: "low" },
-        max_output_tokens: 700,
+        max_output_tokens: 2048,
         text: { format: { type: "json_schema", name: "repository_query_plan", strict: true, schema: queryPlanSchema } }
       }),
       signal: AbortSignal.timeout(12000)
@@ -273,23 +273,34 @@ async function searchRepositories(request, env, prepared = null) {
   const body = await request.json();
   const constraints = prepared?.constraints || parseConstraints(body.query, body);
   const terms = prepared?.terms || (constraints.technologies.length ? constraints.technologies : ((body.query.match(/[A-Za-z][A-Za-z0-9.+#-]{2,}/g) || []).slice(0, 3)));
-  const queryParts = [...terms, "language:" + constraints.language];
-  if (constraints.exclude_archived) queryParts.push("archived:false");
-  if (constraints.pushed_after) queryParts.push("pushed:>" + constraints.pushed_after);
-  if (constraints.project_size === "small") queryParts.push("stars:<5000");
-  if (constraints.project_size === "medium") queryParts.push("stars:1000..30000");
-  if (constraints.project_size === "large") queryParts.push("stars:>10000");
-  const githubQuery = queryParts.join(" ");
+  const qualifiers = ["language:" + constraints.language];
+  if (constraints.exclude_archived) qualifiers.push("archived:false");
+  if (constraints.pushed_after) qualifiers.push("pushed:>" + constraints.pushed_after);
+  if (constraints.project_size === "small") qualifiers.push("stars:<5000");
+  if (constraints.project_size === "medium") qualifiers.push("stars:1000..30000");
+  if (constraints.project_size === "large") qualifiers.push("stars:>10000");
+  const uniqueTerms = [...new Set(terms)].slice(0, 3);
+  const githubQueries = (uniqueTerms.length ? uniqueTerms : [""]).map((term) => [term, ...qualifiers].filter(Boolean).join(" "));
+  const githubQuery = githubQueries.join(" | ");
   const indexed = await searchIndex(env, body.query, constraints);
-  let githubItems = [];
+  const githubItemsByName = new Map();
   let githubTotal = 0;
   let githubStatus = "live";
-  try {
-    const payload = await github("/search/repositories", { q: githubQuery, per_page: 100, sort: "updated", order: "desc" });
-    githubItems = payload.items;
-    githubTotal = payload.total_count;
-  } catch (error) {
-    if (!indexed.length) throw error;
+  let successfulQueries = 0;
+  let lastError = null;
+  for (const query of githubQueries) {
+    try {
+      const payload = await github("/search/repositories", { q: query, per_page: 100, sort: "updated", order: "desc" });
+      successfulQueries += 1;
+      githubTotal += payload.total_count;
+      for (const item of payload.items) githubItemsByName.set(item.full_name, item);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  const githubItems = [...githubItemsByName.values()];
+  if (!successfulQueries) {
+    if (!indexed.length) throw lastError;
     githubStatus = "unavailable";
   }
   const candidates = new Map();
@@ -308,7 +319,7 @@ async function searchRepositories(request, env, prepared = null) {
     fetchedAtMap.set(repo.full_name, liveFetchedAt);
   }
   const eligible = [...candidates.values()].filter((repo) => {
-    if (repo.language && repo.language.toLowerCase() !== "python") return false;
+    if (repo.language && repo.language.toLowerCase() !== constraints.language.toLowerCase()) return false;
     if (constraints.exclude_archived && repo.archived) return false;
     if (constraints.licenses.length && !constraints.licenses.includes(repo.license?.spdx_id)) return false;
     if (constraints.pushed_after && (!repo.pushed_at || repo.pushed_at.slice(0, 10) <= constraints.pushed_after)) return false;
@@ -335,7 +346,7 @@ async function searchRepositories(request, env, prepared = null) {
       const matches = { language: "MATCH", archived: "MATCH" };
       if (constraints.licenses.length) matches.license = "MATCH";
       if (constraints.pushed_after) matches.activity = "MATCH";
-      const reasons = ["主要语言为 Python"];
+      const reasons = ["主要语言为 " + constraints.language];
       if (constraints.technologies.length) reasons.push("匹配技术栈：" + constraints.technologies.join("、"));
       if (repo.pushed_at) reasons.push("最近推送时间：" + repo.pushed_at.slice(0, 10));
       if (repo.license?.spdx_id) reasons.push("许可证：" + repo.license.spdx_id);
@@ -540,10 +551,10 @@ async function runAgent(request, env) {
   startedAt = new Date().toISOString();
   startedClock = performance.now();
   const terms = planned.searchTerms;
-  const queryParts = [...terms, "language:" + constraints.language];
-  if (constraints.exclude_archived) queryParts.push("archived:false");
-  if (constraints.pushed_after) queryParts.push("pushed:>" + constraints.pushed_after);
-  const searchPlan = ["local-index:" + body.query, "github-live:" + queryParts.join(" "), "investigate-top:" + Math.max(1, Math.min(Number(body.investigate_limit || 2), 3))];
+  const qualifiers = ["language:" + constraints.language];
+  if (constraints.exclude_archived) qualifiers.push("archived:false");
+  if (constraints.pushed_after) qualifiers.push("pushed:>" + constraints.pushed_after);
+  const searchPlan = ["local-index:" + body.query, ...[...new Set(terms)].slice(0, 3).map((term) => "github-live:" + [term, ...qualifiers].join(" ")), "investigate-top:" + Math.max(1, Math.min(Number(body.investigate_limit || 2), 3))];
   steps.push(createAgentStep("plan_search", startedAt, startedClock, "规划双路召回和受限深度调查"));
 
   startedAt = new Date().toISOString();
@@ -632,7 +643,7 @@ function evaluationSummary() {
 async function handleApi(request, url, env) {
   try {
     await ensureDatabase(env);
-    if (url.pathname === "/health") return json({ status: "ok", service: "openscout-public" });
+    if (url.pathname === "/health") return json({ status: "ok", service: "gitseek-public" });
     if (url.pathname === "/api/v1/index/status" && request.method === "GET") {
       const totals = await env.DB.prepare("SELECT COUNT(*) AS repository_count, MAX(fetched_at) AS freshest_at FROM repository_index").first();
       const snapshots = await env.DB.prepare("SELECT COUNT(*) AS snapshot_count FROM repository_snapshots").first();

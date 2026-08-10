@@ -23,7 +23,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     settings = get_settings()
     application = FastAPI(
-        title="OpenScout API",
+        title="GitSeek API",
         description="Evidence-backed GitHub project discovery API",
         version=settings.app_version,
         lifespan=lifespan,

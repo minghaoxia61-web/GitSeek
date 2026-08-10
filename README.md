@@ -1,6 +1,6 @@
-# OpenScout
+# GitSeek
 
-OpenScout is an evidence-backed GitHub project discovery and contribution assistant. It turns a
+GitSeek is an evidence-backed GitHub project discovery and contribution assistant. It turns a
 natural-language goal into explicit constraints, retrieves candidate repositories, applies
 deterministic filters and ranking, and explains every recommendation with source evidence.
 
@@ -46,8 +46,8 @@ pnpm run dev
 ```
 
 Open <http://127.0.0.1:5173>. During development, `/api` requests are proxied to the FastAPI
-service on port `8000`. If the API is unavailable, the UI explicitly switches to demonstration
-data so the complete product flow remains reviewable.
+service on port `8000`. The UI reports connection, rate-limit, server, and empty-result states
+explicitly; the application settings page can override the API address on the current device.
 
 ## Windows desktop application
 
@@ -167,7 +167,7 @@ ordinary `POST /api/v1/search` endpoint remains available as a lower-latency fal
 
 ## Repository investigation
 
-OpenScout can now build an on-demand evidence dossier for a public repository:
+GitSeek can now build an on-demand evidence dossier for a public repository:
 
 ```powershell
 Invoke-RestMethod `
@@ -180,7 +180,7 @@ and fetch time for every claim. Repository content is treated as untrusted data 
 
 ## Contribution issues and feedback
 
-OpenScout refreshes a repository's open issues before recommending a task. Pull requests, assigned
+GitSeek refreshes a repository's open issues before recommending a task. Pull requests, assigned
 work, and locked discussions are excluded; labels, description completeness, discussion size, and
 risk labels produce a bounded difficulty estimate.
 
@@ -208,7 +208,7 @@ With PostgreSQL running, apply the schema:
 ```
 
 The first migration creates `repositories` and `repository_features`. Feature booleans are nullable
-on purpose: `null` means that OpenScout has not collected enough evidence to decide.
+on purpose: `null` means that GitSeek has not collected enough evidence to decide.
 
 ## Synchronize seed repositories
 
