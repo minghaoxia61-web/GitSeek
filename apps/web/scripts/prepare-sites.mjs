@@ -641,6 +641,33 @@ function evaluationSummary() {
 }
 
 async function handleApi(request, url, env) {
+  const upstreamBase = String(env.API_BASE_URL || "https://git-seek-swart.vercel.app").replace(/\\\/$/, "");
+  if (upstreamBase) {
+    try {
+      const upstreamUrl = new URL(url.pathname + url.search, upstreamBase);
+      const headers = new Headers(request.headers);
+      headers.delete("host");
+      headers.delete("origin");
+      headers.delete("referer");
+      const response = await fetch(upstreamUrl, {
+        method: request.method,
+        headers,
+        body: request.method === "GET" || request.method === "HEAD"
+          ? undefined
+          : await request.clone().arrayBuffer(),
+        redirect: "manual"
+      });
+      const responseHeaders = new Headers(response.headers);
+      responseHeaders.set("cache-control", "no-store");
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: responseHeaders
+      });
+    } catch {
+      // Keep the built-in public search as a network fallback.
+    }
+  }
   try {
     await ensureDatabase(env);
     if (url.pathname === "/health") return json({ status: "ok", service: "gitseek-public" });

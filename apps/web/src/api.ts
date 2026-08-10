@@ -1,5 +1,6 @@
 const API_URL_KEY = "gitseek:api-base-url";
-const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/$/, "") ?? "";
+const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/$/, "")
+  || (import.meta.env.PROD ? "https://git-seek-swart.vercel.app" : "");
 
 export type ApiHealth = {
   status: "ok";
@@ -36,7 +37,7 @@ export function getDefaultApiBaseUrl(): string {
 export function getApiBaseUrl(): string {
   try {
     const saved = localStorage.getItem(API_URL_KEY);
-    return saved === null ? configuredApiBaseUrl : saved;
+    return saved === null || (saved === "" && configuredApiBaseUrl) ? configuredApiBaseUrl : saved;
   } catch {
     return configuredApiBaseUrl;
   }
