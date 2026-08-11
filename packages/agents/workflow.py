@@ -155,7 +155,11 @@ class AgentWorkflow:
         search_plan = [
             f"local-index:{request.query}",
             *(f"github-live:{query}" for query in github_queries),
-            f"investigate-top:{request.investigate_limit}",
+            (
+                f"investigate-top:{request.investigate_limit}"
+                if request.investigate_limit
+                else "investigate:on-demand"
+            ),
         ]
         steps.append(
             _step(
@@ -180,9 +184,7 @@ class AgentWorkflow:
                 f"合并后得到 {search.eligible_candidate_count} 个合格候选，"
                 f"返回 Top {len(search.results)}",
                 status=(
-                    "partial"
-                    if search.retrieval.github_status == "unavailable"
-                    else "completed"
+                    "partial" if search.retrieval.github_status == "unavailable" else "completed"
                 ),
             )
         )
@@ -200,7 +202,11 @@ class AgentWorkflow:
                 "investigate_repositories",
                 started_at,
                 started_clock,
-                f"完成 {len(investigations)}/{len(selected)} 个仓库的只读证据调查",
+                (
+                    f"完成 {len(investigations)}/{len(selected)} 个仓库的只读证据调查"
+                    if selected
+                    else "快速模式：打开项目档案时再进行深度调查"
+                ),
                 status="partial" if failed_count else "completed",
                 attempts=max_attempts,
             )
@@ -223,7 +229,11 @@ class AgentWorkflow:
                 "verify_evidence",
                 started_at,
                 started_clock,
-                f"验证 {len(verification)} 个推荐，发现 {conflicts} 个事实冲突",
+                (
+                    f"验证 {len(verification)} 个推荐，发现 {conflicts} 个事实冲突"
+                    if selected
+                    else "快速模式：详细证据将在项目档案中核验"
+                ),
                 status="partial" if failed_count or conflicts else "completed",
             )
         )

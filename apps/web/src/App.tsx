@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError, apiFetch, checkApiHealth, getApiBaseUrl, getDefaultApiBaseUrl, resetApiBaseUrl, setApiBaseUrl } from "./api";
 import { APP_VERSION, checkForUpdates, RELEASES_URL, type ReleaseCheck } from "./appInfo";
@@ -24,6 +24,12 @@ type SearchProblem = {
   title: string;
   message: string;
 };
+
+type SearchAttempt =
+  | { kind: "base"; response: SearchResponse }
+  | { kind: "agent"; run: AgentRunResponse }
+  | { kind: "base-error"; error: unknown }
+  | { kind: "agent-error"; error: unknown };
 
 type RepositoryIndexStatus = {
   repository_count: number;
@@ -817,6 +823,7 @@ export default function App() {
   const [searchNotice, setSearchNotice] = useState<string | null>(null);
   const [apiRevision, setApiRevision] = useState(0);
   const [connection, setConnection] = useState<ConnectionStatus>({ state: "checking", label: "正在连接", detail: "正在检测云端服务" });
+  const searchSequence = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -868,6 +875,8 @@ export default function App() {
   }
 
   async function search(query: string, options: SearchOptions) {
+    const sequence = searchSequence.current + 1;
+    searchSequence.current = sequence;
     const recentDate = new Date();
     recentDate.setDate(recentDate.getDate() - 183);
     const requestBody = {
@@ -879,39 +888,65 @@ export default function App() {
       project_size: options.projectSize,
       licenses: options.licenses.length ? options.licenses : null,
       pushed_after: options.recentOnly ? recentDate.toISOString().slice(0, 10) : null,
-      investigate_limit: 2,
     };
     const pushedAfter = options.recentOnly ? recentDate.toISOString().slice(0, 10) : null;
     setSearchDraft({ query, options });
     setSearchProblem(null);
     setSearchNotice(null);
-    try {
-      const run = await apiFetch<AgentRunResponse>("/api/v1/agent/runs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
-      setAgentRun(run);
-      setData(run.search);
-      rememberSearch(query, options, run.search.results.length);
-    } catch (agentError) {
-      try {
-        const response = await apiFetch<SearchResponse>("/api/v1/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(requestBody),
-        });
-        setData(response);
-        setAgentRun(null);
-        rememberSearch(query, options, response.results.length);
-        const agentProblem = problemFrom(agentError);
-        setSearchNotice(agentProblem.kind === "rate_limit" ? "Agent 请求达到限额，已自动切换为基础搜索。" : "Agent 暂时不可用，已自动切换为基础搜索。");
-      } catch (searchError) {
-        setData(emptySearchResponse(query, options, pushedAfter));
-        setAgentRun(null);
-        setSearchProblem(problemFrom(searchError));
-      }
+    const basePromise = apiFetch<SearchResponse>("/api/v1/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(requestBody),
+    });
+    const agentPromise = apiFetch<AgentRunResponse>("/api/v1/agent/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...requestBody, investigate_limit: 0 }),
+    });
+    const baseAttempt: Promise<SearchAttempt> = basePromise.then(
+      (response) => ({ kind: "base", response }),
+      (error) => ({ kind: "base-error", error }),
+    );
+    const agentAttempt: Promise<SearchAttempt> = agentPromise.then(
+      (run) => ({ kind: "agent", run }),
+      (error) => ({ kind: "agent-error", error }),
+    );
+
+    let first = await Promise.race([baseAttempt, agentAttempt]);
+    if (first.kind === "base-error") first = await agentAttempt;
+    else if (first.kind === "agent-error") first = await baseAttempt;
+    if (sequence !== searchSequence.current) return;
+
+    if (first.kind === "agent") {
+      setAgentRun(first.run);
+      setData(first.run.search);
+      rememberSearch(query, options, first.run.search.results.length);
+      setView("results");
+      return;
     }
+    if (first.kind === "base") {
+      setData(first.response);
+      setAgentRun(null);
+      rememberSearch(query, options, first.response.results.length);
+      setSearchNotice("已先显示快速结果，正在后台补充语义分析…");
+      setView("results");
+      void agentPromise.then((run) => {
+        if (sequence !== searchSequence.current) return;
+        setAgentRun(run);
+        setData(run.search);
+        setSearchNotice(null);
+      }).catch((error) => {
+        if (sequence !== searchSequence.current) return;
+        const problem = problemFrom(error);
+        setSearchNotice(problem.kind === "rate_limit" ? "快速结果已显示；智能解析当前达到限额。" : "快速结果已显示；智能解析暂时不可用。");
+      });
+      return;
+    }
+
+    const failure = first.error;
+    setData(emptySearchResponse(query, options, pushedAfter));
+    setAgentRun(null);
+    setSearchProblem(problemFrom(failure));
     setView("results");
   }
 

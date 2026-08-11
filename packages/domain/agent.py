@@ -18,7 +18,7 @@ AgentStepStatus = Literal["completed", "partial", "failed"]
 
 
 class AgentRunRequest(SearchRequest):
-    investigate_limit: int = Field(default=3, ge=1, le=3)
+    investigate_limit: int = Field(default=0, ge=0, le=3)
 
 
 class AgentStep(BaseModel):

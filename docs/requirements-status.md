@@ -6,6 +6,8 @@ complete only when it has an implemented user path and a repeatable verification
 ## Complete
 
 - Anonymous natural-language repository search.
+- Fast-first search that races deterministic and model-assisted paths, runs GitHub term queries in
+  parallel, ignores stale client responses, and defers deep investigation until a dossier is opened.
 - Learning and first-contribution search modes.
 - Structured query planning with model and rule-based fallback.
 - GitHub live search merged with a synchronized local repository index.

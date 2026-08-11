@@ -149,6 +149,12 @@ class StubQueryPlanner:
         )
 
 
+class SearchOnlyAgentClient(AgentStubClient):
+    async def get_repository(self, owner: str, repo: str) -> GitHubRepository:
+        del owner, repo
+        raise AssertionError("fast search must not start repository investigation")
+
+
 def test_agent_runs_bounded_workflow_and_persists_trace() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
@@ -184,3 +190,22 @@ def test_agent_runs_bounded_workflow_and_persists_trace() -> None:
         assert response.investigations[0].signals.has_tests is True
         assert session.scalar(select(func.count(AgentRunRecord.id))) == 1
         assert session.scalar(select(func.count(AgentStepRecord.id))) == 5
+
+
+def test_agent_can_return_without_blocking_on_deep_investigation() -> None:
+    response = asyncio.run(
+        AgentWorkflow(SearchOnlyAgentClient(), query_planner=StubQueryPlanner()).run(
+            AgentRunRequest(
+                query="适合初学者学习的 FastAPI 项目，MIT 许可证",
+                investigate_limit=0,
+            )
+        )
+    )
+
+    assert response.search.results
+    assert response.investigations == []
+    assert response.verification == []
+    investigation_step = next(
+        step for step in response.steps if step.node == "investigate_repositories"
+    )
+    assert "打开项目档案" in investigation_step.summary

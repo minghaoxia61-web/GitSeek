@@ -1,3 +1,4 @@
+import asyncio
 from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 
@@ -61,15 +62,19 @@ class SearchService:
         github_status = "live"
         successful_queries = 0
         last_error: GitHubAPIError | None = None
-        for query in github_queries:
-            try:
-                page = await self._client.search_repositories(query, per_page=100)
-            except GitHubAPIError as exc:
-                last_error = exc
+        query_results = await asyncio.gather(
+            *(self._client.search_repositories(query, per_page=50) for query in github_queries),
+            return_exceptions=True,
+        )
+        for query_result in query_results:
+            if isinstance(query_result, GitHubAPIError):
+                last_error = query_result
                 continue
+            if isinstance(query_result, Exception):
+                raise query_result
             successful_queries += 1
-            github_total += page.result.total_count
-            for item in page.result.items:
+            github_total += query_result.result.total_count
+            for item in query_result.result.items:
                 github_items_by_name[item.full_name] = item
         github_items = list(github_items_by_name.values())
         if successful_queries == 0:

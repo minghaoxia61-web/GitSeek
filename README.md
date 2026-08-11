@@ -135,6 +135,11 @@ uses a generated full-text document with a GIN index; SQLite keeps a portable su
 tests. Every recommendation reports whether it came from the local index, GitHub live search, or
 both, and includes the data fetch time. If GitHub is rate-limited, indexed matches remain available.
 
+The web client uses a fast-first search path: deterministic search and model-assisted interpretation
+start together, the first successful result is rendered immediately, and a later model result refines
+the page without blocking it. GitHub term queries are issued concurrently with bounded 50-item pages;
+repository investigation runs only after the user opens a project dossier.
+
 Index readiness and freshness are available through `GET /api/v1/index/status`.
 
 ## Bounded Agent workflow
