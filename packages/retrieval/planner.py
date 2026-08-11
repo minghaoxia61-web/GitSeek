@@ -6,7 +6,9 @@ def build_github_query(
     search_terms: list[str] | None = None,
 ) -> str:
     terms = search_terms if search_terms else constraints.technologies
-    parts = [*dict.fromkeys(terms), f"language:{constraints.language}"]
+    parts = [*dict.fromkeys(terms)]
+    if constraints.language != "Any":
+        parts.append(f"language:{constraints.language}")
     if constraints.exclude_archived:
         parts.append("archived:false")
     if constraints.pushed_after:

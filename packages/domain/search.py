@@ -17,7 +17,7 @@ class SearchRequest(BaseModel):
 
 class SearchConstraints(BaseModel):
     purpose: Literal["learning", "contribution"] = "learning"
-    language: str = "Python"
+    language: str = "Any"
     technologies: list[str] = Field(default_factory=list)
     licenses: list[str] = Field(default_factory=list)
     exclude_archived: bool = True

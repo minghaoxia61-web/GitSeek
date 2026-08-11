@@ -2,7 +2,6 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { ApiError, apiFetch, checkApiHealth, getApiBaseUrl, getDefaultApiBaseUrl, resetApiBaseUrl, setApiBaseUrl } from "./api";
 import { APP_VERSION, checkForUpdates, RELEASES_URL, type ReleaseCheck } from "./appInfo";
-import { demoResponse } from "./mockData";
 import type { AgentRunResponse, ContributionIssue, EvaluationSummary, Recommendation, RepositoryInvestigation, SearchResponse, View } from "./types";
 
 type SearchOptions = {
@@ -26,6 +25,23 @@ type SearchProblem = {
   message: string;
 };
 
+type SavedEntry = {
+  repository: string;
+  savedAt: string | null;
+  snapshot: Recommendation | null;
+};
+
+const DEFAULT_SEARCH_OPTIONS: SearchOptions = {
+  purpose: "learning",
+  weeklyHours: null,
+  platform: null,
+  licenses: [],
+  recentOnly: false,
+  projectSize: null,
+};
+
+const SAVED_ENTRIES_KEY = "gitseek:saved-entries";
+
 const sampleQueries = [
   "适合初学者的 FastAPI 项目，MIT 许可证，最近半年活跃",
   "每周 5 小时，第一次贡献 AI 工具项目",
@@ -34,7 +50,7 @@ const sampleQueries = [
 
 const navItems: { id: View; label: string }[] = [
   { id: "discover", label: "搜索" },
-  { id: "results", label: "结果" },
+  { id: "saved", label: "收藏" },
 ];
 
 function formatNumber(value: number) {
@@ -66,6 +82,43 @@ function Signal({ tone = "green" }: { tone?: "green" | "amber" | "red" }) {
   return <span className={`signal signal--${tone}`} aria-hidden="true" />;
 }
 
+function readSavedEntries(): SavedEntry[] {
+  try {
+    const detailed = JSON.parse(localStorage.getItem(SAVED_ENTRIES_KEY) ?? "[]") as SavedEntry[];
+    if (Array.isArray(detailed) && detailed.length) return detailed.filter((item) => item?.repository?.includes("/"));
+    const legacy = JSON.parse(localStorage.getItem("gitseek:saved") ?? localStorage.getItem("openscout:saved") ?? "[]") as string[];
+    return Array.isArray(legacy)
+      ? legacy.filter((item) => typeof item === "string" && item.includes("/")).map((repository) => ({ repository, savedAt: null, snapshot: null }))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistSavedEntries(entries: SavedEntry[]) {
+  localStorage.setItem(SAVED_ENTRIES_KEY, JSON.stringify(entries));
+  localStorage.setItem("gitseek:saved", JSON.stringify(entries.map((item) => item.repository)));
+}
+
+function savedEntryAsRecommendation(entry: SavedEntry): Recommendation {
+  if (entry.snapshot) return entry.snapshot;
+  return {
+    rank: 0,
+    full_name: entry.repository,
+    description: "此前收藏的 GitHub 项目。打开档案后会重新读取公开仓库信息。",
+    html_url: `https://github.com/${entry.repository}`,
+    score: 0,
+    stars: 0,
+    language: null,
+    license_spdx: null,
+    pushed_at: null,
+    constraint_match: {},
+    score_breakdown: {},
+    reasons: ["已收藏到当前设备"],
+    risks: [],
+  };
+}
+
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
@@ -89,12 +142,18 @@ function Shell({
   view,
   setView,
   compareCount,
+  savedCount,
+  hasResults,
+  detailParent,
   connection,
   children,
 }: {
   view: View;
   setView: (view: View) => void;
   compareCount: number;
+  savedCount: number;
+  hasResults: boolean;
+  detailParent: "results" | "saved";
   connection: ConnectionStatus;
   children: React.ReactNode;
 }) {
@@ -110,13 +169,15 @@ function Shell({
           {navItems.map((item) => (
             <button
               key={item.id}
-              className={view === item.id || (view === "detail" && item.id === "results") ? "active" : ""}
+              className={view === item.id || (view === "detail" && item.id === detailParent) ? "active" : ""}
               onClick={() => setView(item.id)}
             >
               <span className={`nav-glyph nav-glyph--${item.id}`} />
               <span>{item.label}</span>
+              {item.id === "saved" && savedCount > 0 && <em className="nav-count">{savedCount}</em>}
             </button>
           ))}
+          {hasResults && <button className={view === "results" || (view === "detail" && detailParent === "results") ? "active" : ""} onClick={() => setView("results")}><span className="nav-glyph nav-glyph--results" /><span>结果</span></button>}
         </nav>
 
         <div className="sidebar-footer">
@@ -127,7 +188,7 @@ function Shell({
 
       <div className="workspace">
         <header className="topbar">
-          <div className="breadcrumb"><b>{view === "discover" ? "搜索项目" : view === "evals" ? "质量记录" : view === "compare" ? "项目对比" : view === "settings" ? "设置" : view === "detail" ? "项目档案" : "搜索结果"}</b></div>
+          <div className="breadcrumb"><b>{view === "discover" ? "搜索项目" : view === "saved" ? "我的收藏" : view === "evals" ? "质量记录" : view === "compare" ? "项目对比" : view === "settings" ? "设置" : view === "detail" ? "项目档案" : "搜索结果"}</b></div>
           <div className="top-actions">
             <button className="compare-shortcut" onClick={() => setView("compare")}>对比 {compareCount > 0 && <em>{compareCount}</em>}</button>
             <button className={`system-chip system-chip--${connection.state}`} onClick={() => setView("settings")} title={connection.detail}><Signal tone={connection.state === "online" ? "green" : connection.state === "offline" ? "red" : "amber"} /> {connection.state === "online" ? "在线" : connection.state === "offline" ? "离线" : "连接中"}</button>
@@ -140,16 +201,16 @@ function Shell({
 }
 
 function DiscoverView({ onSearch }: { onSearch: (query: string, options: SearchOptions) => Promise<void> }) {
-  const [query, setQuery] = useState(demoResponse.query);
+  const [query, setQuery] = useState("");
   const [mode, setMode] = useState<"learn" | "contribute">("learn");
   const [advanced, setAdvanced] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [constraints, setConstraints] = useState(["Python"]);
+  const [constraints, setConstraints] = useState<string[]>([]);
   const [weeklyHours, setWeeklyHours] = useState<number | null>(null);
   const [platform, setPlatform] = useState("");
   const [projectSize, setProjectSize] = useState<"" | "small" | "medium" | "large">("");
 
-  const constraintOptions = ["Python", "MIT / Apache", "半年内活跃", "支持 Windows"];
+  const constraintOptions = ["MIT / Apache", "半年内活跃", "支持 Windows"];
 
   function toggleConstraint(value: string) {
     setConstraints((current) => current.includes(value)
@@ -188,8 +249,8 @@ function DiscoverView({ onSearch }: { onSearch: (query: string, options: SearchO
             <button type="button" className={mode === "contribute" ? "active" : ""} onClick={() => setMode("contribute")}>用于贡献</button>
           </div>
           <label className="query-field">
-            <span>例如：适合初学者的 FastAPI 项目，MIT 许可证，半年内有更新</span>
-            <textarea value={query} onChange={(event) => setQuery(event.target.value)} rows={4} />
+            <span>描述用途、技术或限制</span>
+            <textarea value={query} onChange={(event) => setQuery(event.target.value)} maxLength={500} placeholder="输入你真正想找的项目…" rows={4} />
             <small>{query.length} / 500</small>
           </label>
           <div className="quick-constraints" aria-label="常用条件">
@@ -224,12 +285,16 @@ function DiscoverView({ onSearch }: { onSearch: (query: string, options: SearchO
 function ResultCard({
   repo,
   selected,
+  saved,
   onSelect,
+  onSave,
   onDetail,
 }: {
   repo: Recommendation;
   selected: boolean;
+  saved: boolean;
   onSelect: () => void;
+  onSave: () => void;
   onDetail: () => void;
 }) {
   return (
@@ -247,7 +312,7 @@ function ResultCard({
         </div>
         <div className="result-footer">
           <span>{repo.retrieval_sources?.includes("github_live") ? "GitHub 实时数据" : "已同步索引"}</span>
-          <div><button className={`compare-toggle ${selected ? "selected" : ""}`} onClick={onSelect}>{selected ? "已加入对比" : "加入对比"}</button><button onClick={onDetail}>查看档案 →</button></div>
+          <div><button className={`save-toggle ${saved ? "selected" : ""}`} onClick={onSave}>{saved ? "已收藏" : "收藏"}</button><button className={`compare-toggle ${selected ? "selected" : ""}`} onClick={onSelect}>{selected ? "已加入对比" : "加入对比"}</button><button onClick={onDetail}>查看档案 →</button></div>
         </div>
       </div>
     </article>
@@ -258,7 +323,9 @@ function ResultsView({
   data,
   agentRun,
   compare,
+  saved,
   toggleCompare,
+  onSave,
   onDetail,
   onNewSearch,
   problem,
@@ -267,7 +334,9 @@ function ResultsView({
   data: SearchResponse;
   agentRun: AgentRunResponse | null;
   compare: string[];
+  saved: string[];
   toggleCompare: (name: string) => void;
+  onSave: (repo: Recommendation) => void;
   onDetail: (repo: Recommendation) => void;
   onNewSearch: () => void;
   problem: SearchProblem | null;
@@ -299,7 +368,7 @@ function ResultsView({
         <div><small>你的需求</small><p>{data.query}</p></div>
         <div className="constraint-record">
           <span>{data.constraints.purpose === "contribution" ? "首次贡献" : "学习项目"}</span>
-          <span>{data.constraints.language}</span>
+          {data.constraints.language !== "Any" && data.constraints.language !== "未确定" && <span>{data.constraints.language}</span>}
           {data.constraints.technologies.map((item) => <span key={item}>{item}</span>)}
           {data.constraints.licenses.map((item) => <span key={item}>{item}</span>)}
           {data.constraints.pushed_after && <span>{data.constraints.pushed_after} 后更新</span>}
@@ -314,7 +383,7 @@ function ResultsView({
         <section className="results-list">
           <div className="list-toolbar"><span>{data.results.length} 个结果</span><div><button className={sortBy === "match" ? "active" : ""} onClick={() => setSortBy("match")}>最佳匹配</button><button className={sortBy === "activity" ? "active" : ""} onClick={() => setSortBy("activity")}>最近活跃</button><button className={sortBy === "approachable" ? "active" : ""} onClick={() => setSortBy("approachable")}>较小项目</button></div></div>
           {sortedResults.map((repo) => (
-            <ResultCard key={repo.full_name} repo={repo} selected={compare.includes(repo.full_name)} onSelect={() => toggleCompare(repo.full_name)} onDetail={() => onDetail(repo)} />
+            <ResultCard key={repo.full_name} repo={repo} saved={saved.includes(repo.full_name)} selected={compare.includes(repo.full_name)} onSave={() => onSave(repo)} onSelect={() => toggleCompare(repo.full_name)} onDetail={() => onDetail(repo)} />
           ))}
         </section>
 
@@ -376,7 +445,7 @@ function DetailView({
       <section className="detail-hero">
         <div className="repo-monogram">{repo.full_name.split("/")[1].slice(0, 2).toUpperCase()}</div>
         <div className="detail-title">
-          <div className="kicker">{status === "loading" ? "正在读取仓库信息" : status === "ready" ? `项目档案 · ${investigation?.confidence === "high" ? "高" : investigation?.confidence === "medium" ? "中" : "低"}置信度` : "项目档案 · 演示数据"}</div>
+          <div className="kicker">{status === "loading" ? "正在读取仓库信息" : status === "ready" ? `项目档案 · ${investigation?.confidence === "high" ? "高" : investigation?.confidence === "medium" ? "中" : "低"}置信度` : "项目档案 · 搜索阶段数据"}</div>
           <h1>{repo.full_name}</h1>
           <p>{investigation?.description ?? repo.description}</p>
           <div className="repo-meta"><span>★ {formatNumber(repo.stars)}</span><span>{repo.language}</span><span>{repo.license_spdx}</span><span>Default · {investigation?.default_branch ?? "main"}</span></div>
@@ -484,6 +553,42 @@ function EvalsView() {
         </section>
         <article className="panel eval-failures"><div className="panel-title"><span>失败样本</span><small>{summary.failures.length ? `${summary.failures.length} 项需要处理` : "全部通过"}</small></div>{summary.failures.length ? summary.failures.map((failure) => <div className="failure-row" key={`${failure.case}-${failure.expected}`}><b>{failure.case}</b><span>期望：{failure.expected}</span><span>实际：{failure.actual}</span></div>) : <p className="eval-success">当前固定用例全部通过。新增解析规则时仍需扩充困难样本。</p>}</article>
       </>}
+    </div>
+  );
+}
+
+function SavedView({
+  entries,
+  onOpen,
+  onRemove,
+  onDiscover,
+}: {
+  entries: SavedEntry[];
+  onOpen: (repo: Recommendation) => void;
+  onRemove: (repository: string) => void;
+  onDiscover: () => void;
+}) {
+  return (
+    <div className="page saved-page">
+      <section className="page-heading page-heading--row">
+        <div><div className="kicker">Saved repositories</div><h1>留着以后再看</h1><p>收藏保存在当前设备，并在云端服务可用时同步。</p></div>
+        <button className="primary-button" onClick={onDiscover}>继续找项目</button>
+      </section>
+      {!entries.length ? (
+        <section className="compare-empty-state"><span>还没有收藏项目</span><p>搜索后可以直接收藏候选项目，不必先打开详情页。</p><button className="primary-button" onClick={onDiscover}>去搜索项目 →</button></section>
+      ) : (
+        <section className="saved-list" aria-label="收藏的项目">
+          <div className="saved-list-head"><span>{entries.length} 个项目</span><small>DEVICE LIBRARY</small></div>
+          {entries.map((entry, index) => {
+            const repo = savedEntryAsRecommendation(entry);
+            return <article className="saved-row" key={entry.repository}>
+              <span className="saved-index">{String(index + 1).padStart(2, "0")}</span>
+              <div className="saved-summary"><h2>{entry.repository}</h2><p>{repo.description}</p><div>{repo.language && <span>{repo.language}</span>}{repo.license_spdx && <span>{repo.license_spdx}</span>}{repo.stars > 0 && <span>★ {formatNumber(repo.stars)}</span>}<span>{entry.savedAt ? `收藏于 ${entry.savedAt.slice(0, 10)}` : "已从旧版本恢复"}</span></div></div>
+              <div className="saved-actions"><button onClick={() => onOpen(repo)}>查看档案</button><a href={repo.html_url} target="_blank" rel="noreferrer">GitHub ↗</a><button className="remove-action" onClick={() => onRemove(entry.repository)}>移除</button></div>
+            </article>;
+          })}
+        </section>
+      )}
     </div>
   );
 }
@@ -601,13 +706,15 @@ function SettingsView({ connection, onApiChanged }: { connection: ConnectionStat
 
 export default function App() {
   const [view, setView] = useState<View>("discover");
-  const [data, setData] = useState<SearchResponse>(demoResponse);
-  const [selectedRepo, setSelectedRepo] = useState<Recommendation>(demoResponse.results[0]);
+  const [data, setData] = useState<SearchResponse>(() => emptySearchResponse("", DEFAULT_SEARCH_OPTIONS, null));
+  const [selectedRepo, setSelectedRepo] = useState<Recommendation | null>(null);
+  const [detailParent, setDetailParent] = useState<"results" | "saved">("results");
   const [investigation, setInvestigation] = useState<RepositoryInvestigation | null>(null);
   const [investigationStatus, setInvestigationStatus] = useState<"loading" | "ready" | "unavailable">("unavailable");
   const [issues, setIssues] = useState<ContributionIssue[]>([]);
   const [issueStatus, setIssueStatus] = useState<"loading" | "ready" | "unavailable">("unavailable");
   const [compare, setCompare] = useState<string[]>([]);
+  const [savedEntries, setSavedEntries] = useState<SavedEntry[]>(readSavedEntries);
   const [agentRun, setAgentRun] = useState<AgentRunResponse | null>(null);
   const [searchProblem, setSearchProblem] = useState<SearchProblem | null>(null);
   const [searchNotice, setSearchNotice] = useState<string | null>(null);
@@ -631,6 +738,27 @@ export default function App() {
     void refreshConnection(true);
     const timer = window.setInterval(() => void refreshConnection(), 60_000);
     return () => { active = false; window.clearInterval(timer); };
+  }, [apiRevision]);
+
+  useEffect(() => {
+    let active = true;
+    try {
+      const deviceId = getDeviceId();
+      apiFetch<{ repositories: string[] }>(`/api/v1/saved?device_id=${encodeURIComponent(deviceId)}`)
+        .then((payload) => {
+          if (!active) return;
+          setSavedEntries((current) => {
+            const known = new Set(current.map((item) => item.repository));
+            const merged = [...current, ...payload.repositories.filter((repository) => !known.has(repository)).map((repository) => ({ repository, savedAt: null, snapshot: null }))];
+            try { persistSavedEntries(merged); } catch { /* Keep the in-memory list when storage is unavailable. */ }
+            return merged;
+          });
+        })
+        .catch(() => undefined);
+    } catch {
+      // Private browsing can disable storage; local UI remains usable for this session.
+    }
+    return () => { active = false; };
   }, [apiRevision]);
 
   async function search(query: string, options: SearchOptions) {
@@ -705,51 +833,71 @@ export default function App() {
       .catch(() => setIssueStatus("unavailable"));
   }
 
-  async function submitFeedback(action: "helpful" | "not_relevant" | "saved" | "opened_issue") {
+  async function recordFeedback(repo: Recommendation, action: "helpful" | "not_relevant" | "saved" | "opened_issue") {
     let deviceId: string | null = null;
     try {
       deviceId = getDeviceId();
       const feedbackLog = JSON.parse(localStorage.getItem("gitseek:feedback") ?? localStorage.getItem("openscout:feedback") ?? "[]") as Array<Record<string, string>>;
-      localStorage.setItem("gitseek:feedback", JSON.stringify([...feedbackLog.slice(-99), { repository: selectedRepo.full_name, action, query: data.query, createdAt: new Date().toISOString() }]));
-      if (action === "saved") {
-        const stored = JSON.parse(localStorage.getItem("gitseek:saved") ?? localStorage.getItem("openscout:saved") ?? "[]") as string[];
-        localStorage.setItem("gitseek:saved", JSON.stringify([...new Set([...stored, selectedRepo.full_name])]));
-      }
+      localStorage.setItem("gitseek:feedback", JSON.stringify([...feedbackLog.slice(-99), { repository: repo.full_name, action, query: data.query, createdAt: new Date().toISOString() }]));
     } catch {
       // Storage can be unavailable in a locked-down browser; API feedback still proceeds.
     }
     try {
-      const requests = [apiFetch<unknown>("/api/v1/feedback", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            repository: selectedRepo.full_name,
-            action,
-            query: data.query,
-            session_id: data.session_id || null,
-            device_id: deviceId,
-          }),
-        })];
-      if (action === "saved" && deviceId) {
-        requests.push(apiFetch<unknown>("/api/v1/saved", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ device_id: deviceId, repository: selectedRepo.full_name }),
-        }));
-      }
-      await Promise.all(requests);
+      await apiFetch<unknown>("/api/v1/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repository: repo.full_name, action, query: data.query, session_id: data.session_id || null, device_id: deviceId }),
+      });
     } catch {
-      // Device-local save and immediate UI feedback still work when the API is offline.
+      // Immediate UI feedback still works when the API is offline.
     }
   }
 
-  const compareRepos = useMemo(() => data.results.filter((repo) => compare.includes(repo.full_name)), [compare, data.results]);
+  async function saveRepository(repo: Recommendation) {
+    const entry: SavedEntry = { repository: repo.full_name, savedAt: new Date().toISOString(), snapshot: repo };
+    setSavedEntries((current) => {
+      const next = [entry, ...current.filter((item) => item.repository !== repo.full_name)];
+      try { persistSavedEntries(next); } catch { /* Keep the in-memory list when storage is unavailable. */ }
+      return next;
+    });
+    await recordFeedback(repo, "saved");
+    try {
+      const deviceId = getDeviceId();
+      await apiFetch<unknown>("/api/v1/saved", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ device_id: deviceId, repository: repo.full_name }) });
+    } catch {
+      // The local save is authoritative while offline and will remain visible.
+    }
+  }
+
+  async function removeSavedRepository(repository: string) {
+    setSavedEntries((current) => {
+      const next = current.filter((item) => item.repository !== repository);
+      try { persistSavedEntries(next); } catch { /* Keep the in-memory list when storage is unavailable. */ }
+      return next;
+    });
+    try {
+      const deviceId = getDeviceId();
+      const [owner, name] = repository.split("/");
+      await apiFetch<unknown>(`/api/v1/saved/${encodeURIComponent(owner)}/${encodeURIComponent(name)}?device_id=${encodeURIComponent(deviceId)}`, { method: "DELETE" });
+    } catch {
+      // Removing locally still works when the API is offline.
+    }
+  }
+
+  async function submitFeedback(action: "helpful" | "not_relevant" | "saved" | "opened_issue") {
+    if (!selectedRepo) return;
+    if (action === "saved") await saveRepository(selectedRepo);
+    else await recordFeedback(selectedRepo, action);
+  }
+
+  const compareRepos = useMemo(() => compare.map((name) => data.results.find((repo) => repo.full_name === name) ?? savedEntries.find((entry) => entry.repository === name)?.snapshot).filter((repo): repo is Recommendation => Boolean(repo)), [compare, data.results, savedEntries]);
 
   return (
-    <Shell view={view} setView={setView} compareCount={compare.length} connection={connection}>
+    <Shell view={view} setView={setView} compareCount={compare.length} savedCount={savedEntries.length} hasResults={Boolean(data.query)} detailParent={detailParent} connection={connection}>
       {view === "discover" && <DiscoverView onSearch={search} />}
-      {view === "results" && <ResultsView data={data} agentRun={agentRun} compare={compare} toggleCompare={toggleCompare} problem={searchProblem} notice={searchNotice} onNewSearch={() => setView("discover")} onDetail={openDetail} />}
-      {view === "detail" && <DetailView repo={selectedRepo} investigation={investigation} status={investigationStatus} issues={issues} issueStatus={issueStatus} onBack={() => setView("results")} onCompare={() => toggleCompare(selectedRepo.full_name)} onFeedback={submitFeedback} />}
+      {view === "results" && <ResultsView data={data} agentRun={agentRun} compare={compare} saved={savedEntries.map((item) => item.repository)} toggleCompare={toggleCompare} onSave={(repo) => void saveRepository(repo)} problem={searchProblem} notice={searchNotice} onNewSearch={() => setView("discover")} onDetail={(repo) => { setDetailParent("results"); openDetail(repo); }} />}
+      {view === "saved" && <SavedView entries={savedEntries} onOpen={(repo) => { setDetailParent("saved"); openDetail(repo); }} onRemove={(repository) => void removeSavedRepository(repository)} onDiscover={() => setView("discover")} />}
+      {view === "detail" && selectedRepo && <DetailView repo={selectedRepo} investigation={investigation} status={investigationStatus} issues={issues} issueStatus={issueStatus} onBack={() => setView(detailParent)} onCompare={() => toggleCompare(selectedRepo.full_name)} onFeedback={submitFeedback} />}
       {view === "compare" && <CompareView repos={compareRepos} onDiscover={() => setView("results")} onDetail={openDetail} onRemove={toggleCompare} />}
       {view === "evals" && <EvalsView />}
       {view === "settings" && <SettingsView connection={connection} onApiChanged={() => setApiRevision((current) => current + 1)} />}

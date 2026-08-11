@@ -16,6 +16,22 @@ TECHNOLOGY_ALIASES = {
     "docker": "Docker",
 }
 
+LANGUAGE_ALIASES = (
+    (("typescript",), "TypeScript"),
+    (("javascript",), "JavaScript"),
+    (("python",), "Python"),
+    (("rust",), "Rust"),
+    (("golang", "go 语言", "go语言"), "Go"),
+    (("java",), "Java"),
+    (("kotlin",), "Kotlin"),
+    (("swift",), "Swift"),
+    (("c++", "cpp"), "C++"),
+    (("c#", "csharp"), "C#"),
+    (("php",), "PHP"),
+    (("ruby",), "Ruby"),
+    (("dart", "flutter"), "Dart"),
+)
+
 LICENSE_PATTERNS = {
     "MIT": (r"\bmit\b",),
     "Apache-2.0": (r"apache[ -]?2(?:\.0)?",),
@@ -47,6 +63,14 @@ def _parse_activity_date(query: str, today: date) -> date | None:
 def parse_search_constraints(query: str, *, today: date | None = None) -> SearchConstraints:
     reference_date = today or date.today()
     lowered = query.casefold()
+    language = next(
+        (
+            canonical
+            for aliases, canonical in LANGUAGE_ALIASES
+            if any(alias in lowered for alias in aliases)
+        ),
+        "Any",
+    )
 
     technologies = [
         canonical
@@ -74,7 +98,7 @@ def parse_search_constraints(query: str, *, today: date | None = None) -> Search
 
     return SearchConstraints(
         purpose=purpose,
-        language="Python",
+        language=language,
         technologies=technologies,
         licenses=licenses,
         exclude_archived="包含归档" not in query and "include archived" not in lowered,

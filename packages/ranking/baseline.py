@@ -11,12 +11,13 @@ def _constraint_matches(
 ) -> dict[str, str]:
     matches: dict[str, str] = {}
 
-    if repository.language is None:
-        matches["language"] = "UNKNOWN"
-    elif repository.language.casefold() == constraints.language.casefold():
-        matches["language"] = "MATCH"
-    else:
-        matches["language"] = "MISMATCH"
+    if constraints.language != "Any":
+        if repository.language is None:
+            matches["language"] = "UNKNOWN"
+        elif repository.language.casefold() == constraints.language.casefold():
+            matches["language"] = "MATCH"
+        else:
+            matches["language"] = "MISMATCH"
 
     matches["archived"] = (
         "MISMATCH" if constraints.exclude_archived and repository.archived else "MATCH"
@@ -112,7 +113,7 @@ def rank_repositories(
     scored.sort(key=lambda item: (item[1], item[0].stargazers_count), reverse=True)
     results: list[Recommendation] = []
     for rank, (repository, score, breakdown, matches) in enumerate(scored[:limit], start=1):
-        reasons = [f"主要语言为 {repository.language}"]
+        reasons = [f"主要语言为 {repository.language}"] if repository.language else []
         if constraints.technologies:
             matched_technologies = [
                 technology
@@ -155,4 +156,3 @@ def rank_repositories(
         )
 
     return results, len(scored)
-

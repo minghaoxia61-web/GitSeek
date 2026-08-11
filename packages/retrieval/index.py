@@ -38,12 +38,13 @@ class RepositoryIndex:
         limit: int = 200,
     ) -> list[IndexedRepository]:
         statement = select(Repository)
-        statement = statement.where(
-            or_(
-                Repository.primary_language.is_(None),
-                func.lower(Repository.primary_language) == constraints.language.casefold(),
+        if constraints.language != "Any":
+            statement = statement.where(
+                or_(
+                    Repository.primary_language.is_(None),
+                    func.lower(Repository.primary_language) == constraints.language.casefold(),
+                )
             )
-        )
         if constraints.exclude_archived:
             statement = statement.where(Repository.archived.is_(False))
         if constraints.licenses:

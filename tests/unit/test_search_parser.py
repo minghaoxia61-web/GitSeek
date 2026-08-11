@@ -34,3 +34,17 @@ def test_model_terms_create_broad_independent_queries() -> None:
         "tutorial language:Python archived:false",
         "example language:Python archived:false",
     ]
+
+
+def test_does_not_default_to_python_when_language_is_unspecified() -> None:
+    constraints = parse_search_constraints("找一个适合初学者的命令行音乐播放器")
+
+    assert constraints.language == "Any"
+    assert "language:" not in build_github_query(constraints)
+
+
+def test_infers_common_non_python_language() -> None:
+    constraints = parse_search_constraints("Rust 写的终端音乐播放器")
+
+    assert constraints.language == "Rust"
+    assert "language:Rust" in build_github_query(constraints)

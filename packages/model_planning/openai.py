@@ -54,7 +54,8 @@ QUERY_PLAN_SCHEMA = {
 }
 
 SYSTEM_PROMPT = """You convert a user's repository-discovery request into a safe GitHub search plan.
-Return only the requested schema. Infer the programming language instead of defaulting to Python.
+Return only the requested schema. Infer the programming language when it is stated or strongly
+implied; otherwise use the exact value "Any" instead of defaulting to Python.
 Use at most three concise github_terms that are likely to appear in repository names, descriptions,
 or topics. Do not put GitHub qualifiers such as language:, stars:, pushed:, or archived: in terms.
 Only include a license, date, platform, project size, or weekly hours when the user states
@@ -155,7 +156,7 @@ class OpenAIQueryPlanner:
             )
             response.raise_for_status()
             plan = ModelQueryPlan.model_validate(json.loads(_output_text(response.json())))
-            plan.language = _clean_term(plan.language) or "Python"
+            plan.language = _clean_term(plan.language) or "Any"
             plan.technologies = [term for item in plan.technologies if (term := _clean_term(item))]
             plan.github_terms = [term for item in plan.github_terms if (term := _clean_term(item))]
             plan.licenses = [term for item in plan.licenses if (term := _clean_term(item))]
