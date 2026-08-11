@@ -466,7 +466,7 @@ function DetailView({
   const [showFeedbackReasons, setShowFeedbackReasons] = useState(false);
   const scores = investigation?.scores;
   const dossierScore = scores
-    ? (scores.documentation + scores.engineering + scores.learning_friendliness) / 3
+    ? (scores.documentation + scores.engineering + scores.learning_friendliness + (scores.maintenance ?? scores.community_health)) / 4
     : repo.score;
   const signals = investigation?.signals;
   const signalRows: [string, boolean | undefined][] = [
@@ -483,8 +483,10 @@ function DetailView({
     ["文档完整", scores?.documentation ?? 0],
     ["工程质量", scores?.engineering ?? 0],
     ["学习友好", scores?.learning_friendliness ?? 0],
+    ["维护状态", scores?.maintenance ?? 0],
   ] as const;
   const risks = investigation?.risks ?? repo.risks;
+  const activity = investigation?.activity;
 
   async function feedback(action: "helpful" | "not_relevant" | "saved", reason?: string) {
     await onFeedback(action, reason);
@@ -539,6 +541,15 @@ function DetailView({
               <li><b>再准备本地环境</b><p>{signals?.has_contributing ? "按贡献指南准备环境；只复制你理解并确认安全的命令。" : "未发现贡献指南，先从文档和依赖文件确认环境，不要直接运行陌生脚本。"}</p></li>
               <li><b>最后选择一个小任务</b><p>{issues.length ? `优先查看下方 ${issues.length} 个未认领候选，并在开始前确认仍为开放状态。` : "当前没有可靠候选 Issue，可以先阅读讨论区或从文档改进开始。"}</p></li>
             </ol>
+          </article>
+
+          <article className="panel activity-panel">
+            <div className="panel-title"><span>维护活动</span><small>GitHub 公开样本</small></div>
+            <div className="activity-grid">
+              <div><span>最近发布</span><strong>{activity?.latest_release_at?.slice(0, 10) ?? "未发现"}</strong><small>{activity?.median_release_interval_days != null ? `发布间隔中位数 ${activity.median_release_interval_days} 天` : `${activity?.releases_sampled ?? 0} 个正式版本样本`}</small></div>
+              <div><span>PR 处理</span><strong>{activity?.median_pull_request_resolution_hours != null ? `${Math.round(activity.median_pull_request_resolution_hours / 24)} 天` : "未知"}</strong><small>{activity?.merged_pull_request_ratio != null ? `${Math.round(activity.merged_pull_request_ratio * 100)}% 样本已合并` : `${activity?.pull_requests_sampled ?? 0} 个关闭 PR 样本`}</small></div>
+              <div><span>贡献连续性</span><strong>{activity?.contributor_continuity === "distributed" ? "较分散" : activity?.contributor_continuity === "concentrated" ? "较集中" : "未知"}</strong><small>{activity?.contributors_sampled ? `${activity.contributors_sampled} 位贡献者样本` : "样本不足"}</small></div>
+            </div>
           </article>
 
           <article className="panel issues-panel">

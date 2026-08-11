@@ -4,6 +4,9 @@ import base64
 from packages.github_client.schemas import (
     GitHubCommunityProfile,
     GitHubContentItem,
+    GitHubContributor,
+    GitHubPullRequest,
+    GitHubRelease,
     GitHubRepository,
 )
 from packages.investigation import RepositoryInvestigator
@@ -55,9 +58,7 @@ class StubInvestigationClient:
                 "health_percentage": 90,
                 "files": {
                     "readme": {"html_url": "https://github.com/example/demo/README.md"},
-                    "contributing": {
-                        "html_url": "https://github.com/example/demo/CONTRIBUTING.md"
-                    },
+                    "contributing": {"html_url": "https://github.com/example/demo/CONTRIBUTING.md"},
                     "issue_template": {
                         "html_url": "https://github.com/example/demo/issues/new/choose"
                     },
@@ -105,6 +106,82 @@ class StubInvestigationClient:
             html_url="https://github.com/example/demo/blob/main/README.md",
         )
 
+    async def list_releases(
+        self, owner: str, repo: str, *, per_page: int = 10
+    ) -> list[GitHubRelease]:
+        del owner, repo, per_page
+        return [
+            GitHubRelease(
+                tag_name="v3",
+                html_url="https://github.com/example/demo/releases/3",
+                published_at="2026-07-01T00:00:00Z",
+            ),
+            GitHubRelease(
+                tag_name="v2",
+                html_url="https://github.com/example/demo/releases/2",
+                published_at="2026-05-01T00:00:00Z",
+            ),
+            GitHubRelease(
+                tag_name="v1",
+                html_url="https://github.com/example/demo/releases/1",
+                published_at="2026-03-01T00:00:00Z",
+            ),
+        ]
+
+    async def list_pull_requests(
+        self, owner: str, repo: str, *, per_page: int = 20
+    ) -> list[GitHubPullRequest]:
+        del owner, repo, per_page
+        return [
+            GitHubPullRequest(
+                number=3,
+                html_url="https://github.com/example/demo/pull/3",
+                state="closed",
+                created_at="2026-07-01T00:00:00Z",
+                closed_at="2026-07-02T00:00:00Z",
+                merged_at="2026-07-02T00:00:00Z",
+            ),
+            GitHubPullRequest(
+                number=2,
+                html_url="https://github.com/example/demo/pull/2",
+                state="closed",
+                created_at="2026-06-01T00:00:00Z",
+                closed_at="2026-06-03T00:00:00Z",
+                merged_at="2026-06-03T00:00:00Z",
+            ),
+            GitHubPullRequest(
+                number=1,
+                html_url="https://github.com/example/demo/pull/1",
+                state="closed",
+                created_at="2026-05-01T00:00:00Z",
+                closed_at="2026-05-04T00:00:00Z",
+            ),
+        ]
+
+    async def list_contributors(
+        self, owner: str, repo: str, *, per_page: int = 30
+    ) -> list[GitHubContributor]:
+        del owner, repo, per_page
+        return [
+            GitHubContributor(login="maintainer", contributions=60),
+            GitHubContributor(login="alice", contributions=25),
+            GitHubContributor(login="bob", contributions=15),
+        ]
+
+
+class PartialActivityClient(StubInvestigationClient):
+    async def list_releases(self, *args, **kwargs) -> list[GitHubRelease]:
+        del args, kwargs
+        raise RuntimeError("release endpoint unavailable")
+
+    async def list_pull_requests(self, *args, **kwargs) -> list[GitHubPullRequest]:
+        del args, kwargs
+        raise RuntimeError("pull endpoint unavailable")
+
+    async def list_contributors(self, *args, **kwargs) -> list[GitHubContributor]:
+        del args, kwargs
+        raise RuntimeError("contributor endpoint unavailable")
+
 
 def test_investigator_builds_traceable_engineering_signals() -> None:
     result = asyncio.run(
@@ -121,5 +198,19 @@ def test_investigator_builds_traceable_engineering_signals() -> None:
     assert result.scores.documentation == 90
     assert result.scores.engineering == 100
     assert result.scores.learning_friendliness == 100
+    assert result.scores.maintenance > 90
+    assert result.activity.median_release_interval_days == 61
+    assert result.activity.merged_pull_request_ratio == 0.667
+    assert result.activity.contributor_continuity == "distributed"
     assert all(item.source_url.startswith("https://") for item in result.evidence)
 
+
+def test_investigator_keeps_dossier_when_activity_sources_fail() -> None:
+    result = asyncio.run(
+        RepositoryInvestigator(PartialActivityClient()).investigate("example", "demo")
+    )
+
+    assert result.confidence == "high"
+    assert result.activity.contributor_continuity == "unknown"
+    assert result.scores.maintenance == 0
+    assert "Release 数据暂不可用" in result.limitations

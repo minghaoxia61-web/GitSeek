@@ -116,3 +116,31 @@ class GitHubIssue(BaseModel):
     created_at: datetime
     updated_at: datetime
     pull_request: dict[str, object] | None = None
+
+
+class GitHubRelease(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    tag_name: str
+    html_url: str
+    draft: bool = False
+    prerelease: bool = False
+    published_at: datetime | None = None
+
+
+class GitHubPullRequest(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    number: int
+    html_url: str
+    state: str
+    created_at: datetime
+    closed_at: datetime | None = None
+    merged_at: datetime | None = None
+
+
+class GitHubContributor(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    login: str
+    contributions: int = 0

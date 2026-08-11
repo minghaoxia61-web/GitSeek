@@ -6,7 +6,10 @@ from pydantic import SecretStr
 from packages.github_client.schemas import (
     GitHubCommunityProfile,
     GitHubContentItem,
+    GitHubContributor,
     GitHubIssue,
+    GitHubPullRequest,
+    GitHubRelease,
     GitHubRepository,
     GitHubSearchPage,
     GitHubSearchResult,
@@ -123,9 +126,7 @@ class GitHubClient:
         return GitHubSearchPage(
             result=result,
             etag=response.headers.get("etag"),
-            rate_limit_remaining=_parse_optional_int(
-                response.headers.get("x-ratelimit-remaining")
-            ),
+            rate_limit_remaining=_parse_optional_int(response.headers.get("x-ratelimit-remaining")),
             rate_limit_reset=reset_at,
         )
 
@@ -191,3 +192,41 @@ class GitHubClient:
         if not isinstance(payload, list):
             raise GitHubAPIError("Expected an issue listing")
         return [GitHubIssue.model_validate(item) for item in payload]
+
+    async def list_releases(
+        self, owner: str, repo: str, *, per_page: int = 10
+    ) -> list[GitHubRelease]:
+        payload = await self._get_json(
+            f"/repos/{owner}/{repo}/releases",
+            params={"per_page": max(1, min(per_page, 100))},
+        )
+        if not isinstance(payload, list):
+            raise GitHubAPIError("Expected a release listing")
+        return [GitHubRelease.model_validate(item) for item in payload]
+
+    async def list_pull_requests(
+        self, owner: str, repo: str, *, per_page: int = 20
+    ) -> list[GitHubPullRequest]:
+        payload = await self._get_json(
+            f"/repos/{owner}/{repo}/pulls",
+            params={
+                "state": "closed",
+                "sort": "updated",
+                "direction": "desc",
+                "per_page": max(1, min(per_page, 100)),
+            },
+        )
+        if not isinstance(payload, list):
+            raise GitHubAPIError("Expected a pull request listing")
+        return [GitHubPullRequest.model_validate(item) for item in payload]
+
+    async def list_contributors(
+        self, owner: str, repo: str, *, per_page: int = 30
+    ) -> list[GitHubContributor]:
+        payload = await self._get_json(
+            f"/repos/{owner}/{repo}/contributors",
+            params={"per_page": max(1, min(per_page, 100)), "anon": "false"},
+        )
+        if not isinstance(payload, list):
+            raise GitHubAPIError("Expected a contributor listing")
+        return [GitHubContributor.model_validate(item) for item in payload]

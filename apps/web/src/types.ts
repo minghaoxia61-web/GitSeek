@@ -163,6 +163,18 @@ export type RepositoryInvestigation = {
     documentation: number;
     engineering: number;
     learning_friendliness: number;
+    maintenance?: number;
+  };
+  activity?: {
+    releases_sampled: number;
+    latest_release_at: string | null;
+    median_release_interval_days: number | null;
+    pull_requests_sampled: number;
+    merged_pull_request_ratio: number | null;
+    median_pull_request_resolution_hours: number | null;
+    contributors_sampled: number;
+    top_contributor_share: number | null;
+    contributor_continuity: "distributed" | "concentrated" | "unknown";
   };
   evidence: InvestigationEvidence[];
   risks: string[];

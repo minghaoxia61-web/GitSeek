@@ -14,6 +14,8 @@ complete only when it has an implemented user path and a repeatable verification
   and persisted step traces.
 - Read-only repository investigation for README, community files, tests, CI, dependency files, and
   other engineering signals.
+- Maintenance investigation for published release cadence, closed-PR resolution and merge ratios,
+  and contributor activity distribution, with per-source degradation.
 - Refreshed open-Issue recommendations that exclude pull requests, assigned work, and locked items.
 - Evidence links, fetch times, confidence, score breakdowns, reasons, risks, and visible degradation.
 - Result comparison for up to three repositories.
@@ -38,8 +40,8 @@ complete only when it has an implemented user path and a repeatable verification
   and embedding-by-commit caching are not implemented.
 - Deep investigation: the Agent investigates the top 1-3 repositories rather than the planned top
   20, to keep public-demo latency and GitHub usage bounded.
-- Health score: documentation and engineering signals exist, but release cadence, maintainer response
-  time, contributor continuity, and PR interaction are not yet complete.
+- Health score: documentation, engineering, release cadence, PR interaction, and contributor
+  distribution signals exist; first maintainer response time still requires timeline-event sampling.
 - Search progress: bounded step summaries are shown after a run; SSE incremental progress is not yet
   implemented.
 - Evaluation: a versioned 40-case constraint suite, category breakdowns, and visible failures are
@@ -67,5 +69,5 @@ complete only when it has an implemented user path and a repeatable verification
 1. Add the 100-150 human relevance dataset and Recall/nDCG scorers alongside the parser suite.
 2. Add scheduled index freshness and production freshness alerts.
 3. Add vector recall and an ablation comparison against keyword-only retrieval.
-4. Expand repository health features with Release, PR response, and contributor continuity signals.
+4. Add first-response timing from Issue/PR timeline events.
 5. Add SSE progress, public rate limiting, end-to-end tests, and production monitoring.

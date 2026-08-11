@@ -52,6 +52,7 @@ class AgentStubClient:
                 }
             }
         )
+
     async def get_repository(self, owner: str, repo: str) -> GitHubRepository:
         assert (owner, repo) == ("example", "fastapi-demo")
         return self.repository
@@ -119,6 +120,18 @@ class AgentStubClient:
                 "html_url": "https://github.com/example/fastapi-demo#readme",
             }
         )
+
+    async def list_releases(self, *args, **kwargs) -> list:
+        del args, kwargs
+        return []
+
+    async def list_pull_requests(self, *args, **kwargs) -> list:
+        del args, kwargs
+        return []
+
+    async def list_contributors(self, *args, **kwargs) -> list:
+        del args, kwargs
+        return []
 
 
 class StubQueryPlanner:
