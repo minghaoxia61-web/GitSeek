@@ -13,6 +13,7 @@ class SearchRequest(BaseModel):
     project_size: Literal["small", "medium", "large"] | None = None
     licenses: list[str] | None = None
     pushed_after: date | None = None
+    live_query_limit: int = Field(default=3, ge=1, le=3)
 
 
 class SearchConstraints(BaseModel):
@@ -41,9 +42,7 @@ class Recommendation(BaseModel):
     score_breakdown: dict[str, float]
     reasons: list[str]
     risks: list[str]
-    retrieval_sources: list[Literal["local_index", "github_live"]] = Field(
-        default_factory=list
-    )
+    retrieval_sources: list[Literal["local_index", "github_live"]] = Field(default_factory=list)
     data_fetched_at: datetime | None = None
     data_valid_until: datetime | None = None
 

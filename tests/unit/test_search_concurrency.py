@@ -44,4 +44,17 @@ def test_search_runs_github_queries_concurrently_with_bounded_pages() -> None:
 
     assert response.generated_github_query.count(" | ") == 2
     assert client.max_active == 3
-    assert client.per_page_values == [50, 50, 50]
+    assert client.per_page_values == [30, 30, 30]
+
+
+def test_fast_search_limits_live_query_fanout() -> None:
+    client = ConcurrentSearchClient()
+    response = asyncio.run(
+        SearchService(client).search(
+            SearchRequest(query="FastAPI PostgreSQL Redis 项目", live_query_limit=1)
+        )
+    )
+
+    assert " | " not in response.generated_github_query
+    assert client.max_active == 1
+    assert client.per_page_values == [30]

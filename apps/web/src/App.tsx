@@ -888,6 +888,7 @@ export default function App() {
       project_size: options.projectSize,
       licenses: options.licenses.length ? options.licenses : null,
       pushed_after: options.recentOnly ? recentDate.toISOString().slice(0, 10) : null,
+      live_query_limit: 1,
     };
     const pushedAfter = options.recentOnly ? recentDate.toISOString().slice(0, 10) : null;
     setSearchDraft({ query, options });
@@ -901,7 +902,7 @@ export default function App() {
     const agentPromise = apiFetch<AgentRunResponse>("/api/v1/agent/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...requestBody, investigate_limit: 0 }),
+      body: JSON.stringify({ ...requestBody, live_query_limit: 3, investigate_limit: 0 }),
     });
     const baseAttempt: Promise<SearchAttempt> = basePromise.then(
       (response) => ({ kind: "base", response }),

@@ -50,7 +50,7 @@ class SearchService:
             constraints.licenses = request.licenses
         if request.pushed_after is not None:
             constraints.pushed_after = request.pushed_after
-        github_queries = build_github_queries(constraints, search_terms)
+        github_queries = build_github_queries(constraints, search_terms)[: request.live_query_limit]
         github_query = " | ".join(github_queries)
         indexed = (
             self._repository_index.search(request.query, constraints)
@@ -63,7 +63,7 @@ class SearchService:
         successful_queries = 0
         last_error: GitHubAPIError | None = None
         query_results = await asyncio.gather(
-            *(self._client.search_repositories(query, per_page=50) for query in github_queries),
+            *(self._client.search_repositories(query, per_page=30) for query in github_queries),
             return_exceptions=True,
         )
         for query_result in query_results:
