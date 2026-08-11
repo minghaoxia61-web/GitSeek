@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import String, cast, func, literal_column, or_, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -81,13 +81,7 @@ class RepositoryIndex:
                     cast(Repository.topics, String),
                 )
                 statement = statement.where(
-                    or_(
-                        *[
-                            column.ilike(f"%{term}%")
-                            for term in terms
-                            for column in corpus_columns
-                        ]
-                    )
+                    or_(*[column.ilike(f"%{term}%") for term in terms for column in corpus_columns])
                 )
 
         statement = statement.order_by(
@@ -104,17 +98,46 @@ class RepositoryIndex:
             for record in records
         ]
 
-    def status(self) -> RepositoryIndexStatus:
+    def status(self, *, now: datetime | None = None) -> RepositoryIndexStatus:
         try:
+            reference_time = now or datetime.now(UTC)
             repository_count = self._session.scalar(select(func.count(Repository.id))) or 0
-            snapshot_count = self._session.scalar(
-                select(func.count(RepositorySnapshot.id))
-            ) or 0
+            snapshot_count = self._session.scalar(select(func.count(RepositorySnapshot.id))) or 0
             freshest_at = self._session.scalar(select(func.max(Repository.fetched_at)))
+            oldest_at = self._session.scalar(select(func.min(Repository.fetched_at)))
+            stale_repository_count = (
+                self._session.scalar(
+                    select(func.count(Repository.id)).where(
+                        Repository.fetched_at < reference_time - timedelta(days=7)
+                    )
+                )
+                or 0
+            )
+            expired_repository_count = (
+                self._session.scalar(
+                    select(func.count(Repository.id)).where(
+                        Repository.fetched_at < reference_time - timedelta(days=30)
+                    )
+                )
+                or 0
+            )
+            if repository_count == 0:
+                freshness_state = "empty"
+            elif expired_repository_count == repository_count:
+                freshness_state = "expired"
+            elif stale_repository_count == repository_count:
+                freshness_state = "stale"
+            else:
+                freshness_state = "fresh"
             return RepositoryIndexStatus(
                 repository_count=repository_count,
                 snapshot_count=snapshot_count,
                 freshest_at=freshest_at,
+                oldest_at=oldest_at,
+                stale_repository_count=stale_repository_count,
+                expired_repository_count=expired_repository_count,
+                freshness_state=freshness_state,
+                next_refresh_at=(freshest_at + timedelta(days=7) if freshest_at else None),
                 ready=repository_count > 0,
             )
         except SQLAlchemyError:
@@ -123,6 +146,8 @@ class RepositoryIndex:
                 repository_count=0,
                 snapshot_count=0,
                 freshest_at=None,
+                oldest_at=None,
+                freshness_state="empty",
                 ready=False,
             )
 
@@ -139,9 +164,7 @@ class RepositoryIndex:
                 "default_branch": record.default_branch,
                 "language": record.primary_language,
                 "topics": record.topics,
-                "license": {"spdx_id": record.license_spdx}
-                if record.license_spdx
-                else None,
+                "license": {"spdx_id": record.license_spdx} if record.license_spdx else None,
                 "stargazers_count": record.stars,
                 "forks_count": record.forks,
                 "open_issues_count": record.open_issues,

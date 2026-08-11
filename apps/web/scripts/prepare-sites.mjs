@@ -679,13 +679,23 @@ async function handleApi(request, url, env) {
     await ensureDatabase(env);
     if (url.pathname === "/health") return json({ status: "ok", service: "gitseek-public" });
     if (url.pathname === "/api/v1/index/status" && request.method === "GET") {
-      const totals = await env.DB.prepare("SELECT COUNT(*) AS repository_count, MAX(fetched_at) AS freshest_at FROM repository_index").first();
+      const totals = await env.DB.prepare("SELECT COUNT(*) AS repository_count, MAX(fetched_at) AS freshest_at, MIN(fetched_at) AS oldest_at, SUM(CASE WHEN fetched_at < datetime('now', '-7 days') THEN 1 ELSE 0 END) AS stale_repository_count, SUM(CASE WHEN fetched_at < datetime('now', '-30 days') THEN 1 ELSE 0 END) AS expired_repository_count FROM repository_index").first();
       const snapshots = await env.DB.prepare("SELECT COUNT(*) AS snapshot_count FROM repository_snapshots").first();
+      const count = Number(totals?.repository_count || 0);
+      const stale = Number(totals?.stale_repository_count || 0);
+      const expired = Number(totals?.expired_repository_count || 0);
+      const freshnessState = count === 0 ? "empty" : expired === count ? "expired" : stale === count ? "stale" : "fresh";
+      const freshestAt = totals?.freshest_at || null;
       return json({
-        repository_count: totals?.repository_count || 0,
+        repository_count: count,
         snapshot_count: snapshots?.snapshot_count || 0,
-        freshest_at: totals?.freshest_at || null,
-        ready: (totals?.repository_count || 0) > 0
+        freshest_at: freshestAt,
+        oldest_at: totals?.oldest_at || null,
+        stale_repository_count: stale,
+        expired_repository_count: expired,
+        freshness_state: freshnessState,
+        next_refresh_at: freshestAt ? new Date(new Date(freshestAt).getTime() + 7 * 86_400_000).toISOString() : null,
+        ready: count > 0
       });
     }
     if (url.pathname === "/api/v1/agent/runs" && request.method === "POST") return await runAgent(request, env);

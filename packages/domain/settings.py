@@ -18,8 +18,7 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     cors_origins: str = (
-        "http://127.0.0.1:5173,http://localhost:5173,"
-        "tauri://localhost,http://tauri.localhost"
+        "http://127.0.0.1:5173,http://localhost:5173,tauri://localhost,http://tauri.localhost"
     )
     database_url: str = Field(
         default="postgresql+psycopg://openscout:openscout@localhost:5432/openscout",
@@ -28,6 +27,7 @@ class Settings(BaseSettings):
     github_token: SecretStr | None = Field(default=None, validation_alias="GITHUB_TOKEN")
     github_api_url: str = "https://api.github.com"
     github_api_version: str = "2026-03-10"
+    cron_secret: SecretStr | None = Field(default=None, validation_alias="CRON_SECRET")
     openai_api_key: SecretStr | None = Field(default=None, validation_alias="OPENAI_API_KEY")
     openai_model: str = "gpt-5.6-luna"
     openai_api_url: str = "https://api.openai.com/v1"

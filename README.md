@@ -237,6 +237,16 @@ The seed job is resumable: repository rows are upserted, while each refresh appe
 metrics snapshot. A GitHub token is strongly recommended because unauthenticated search limits are
 too low for the initial 3,000-repository import.
 
+### Scheduled refresh on Vercel
+
+The production deployment registers a daily refresh at 03:00 UTC. Add a random value of at least
+16 characters as `CRON_SECRET` in the Vercel project. Vercel sends it as a Bearer credential; the
+refresh endpoint rejects missing or incorrect credentials. Each run rotates through two popularity
+bands and refreshes at most 200 repository records to stay inside the function time budget.
+
+`GET /api/v1/index/status` reports fresh, stale (over 7 days), and expired (over 30 days) record
+counts. The web settings screen shows the same state without exposing the refresh credential.
+
 ## Tests and lint
 
 ```powershell

@@ -25,6 +25,18 @@ type SearchProblem = {
   message: string;
 };
 
+type RepositoryIndexStatus = {
+  repository_count: number;
+  snapshot_count: number;
+  freshest_at: string | null;
+  oldest_at: string | null;
+  stale_repository_count: number;
+  expired_repository_count: number;
+  freshness_state: "empty" | "fresh" | "stale" | "expired";
+  next_refresh_at: string | null;
+  ready: boolean;
+};
+
 type SavedEntry = {
   repository: string;
   savedAt: string | null;
@@ -708,6 +720,15 @@ function SettingsView({ connection, onApiChanged }: { connection: ConnectionStat
   const [updateResult, setUpdateResult] = useState<ReleaseCheck | null>(null);
   const [updateMessage, setUpdateMessage] = useState("");
   const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [indexStatus, setIndexStatus] = useState<RepositoryIndexStatus | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    apiFetch<RepositoryIndexStatus>("/api/v1/index/status")
+      .then((payload) => { if (active) setIndexStatus(payload); })
+      .catch(() => { if (active) setIndexStatus(null); });
+    return () => { active = false; };
+  }, [connection.detail]);
 
   async function saveAndTest(event: FormEvent) {
     event.preventDefault();
@@ -771,7 +792,7 @@ function SettingsView({ connection, onApiChanged }: { connection: ConnectionStat
 
         <article className="panel settings-card settings-card--wide">
           <div className="settings-card-head"><div><small>DIAGNOSTICS</small><h2>连接诊断</h2></div></div>
-          <div className="diagnostic-list"><div><span>服务状态</span><b>{connection.label}</b></div><div><span>当前地址</span><b>{getApiBaseUrl() || window.location.origin}</b></div><div><span>最近结果</span><b>{connection.detail}</b></div></div>
+          <div className="diagnostic-list"><div><span>服务状态</span><b>{connection.label}</b></div><div><span>当前地址</span><b>{getApiBaseUrl() || window.location.origin}</b></div><div><span>最近结果</span><b>{connection.detail}</b></div><div><span>本地索引</span><b>{indexStatus ? `${indexStatus.repository_count} 个 · ${indexStatus.freshness_state === "fresh" ? "正常" : indexStatus.freshness_state === "stale" ? "待刷新" : indexStatus.freshness_state === "expired" ? "已过期" : "未建立"}` : "暂不可用"}</b>{indexStatus?.stale_repository_count ? <small>{indexStatus.stale_repository_count} 个超过 7 天</small> : null}</div></div>
         </article>
       </div>
     </div>

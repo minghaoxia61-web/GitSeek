@@ -27,15 +27,17 @@ complete only when it has an implemented user path and a repeatable verification
 - Unit tests and a versioned 40-case parser regression dataset with per-category quality results.
 - Seven-day result validity metadata, visible freshness states, and a user-triggered repository
   recheck for investigation and Issue data.
+- Authenticated daily Vercel index refresh with rotating popularity bands, stale/expired counts, and
+  a visible production index diagnostic.
 
 ## Partial
 
-- Initial repository index: resumable seed tooling targets 3,000 repositories, but production index
-  size and scheduled freshness are not yet continuously verified.
+- Initial repository index: resumable seed tooling targets 3,000 repositories and daily refresh is
+  available, but the production index size still depends on completing the initial seed.
 - Platform and environment constraints: parsed and displayed, but not all repositories provide
   enough structured evidence for strict enforcement.
-- Data freshness: search results now include `fetched_at`, seven-day `valid_until`, and a manual
-  recheck path; scheduled background refresh and production freshness alerts are still missing.
+- Data freshness: search results include `fetched_at`, seven-day `valid_until`, manual recheck, daily
+  background refresh, and index diagnostics; external alert delivery is still missing.
 - Retrieval: GitHub Search, PostgreSQL full-text search, and SQLite fallback exist; vector retrieval
   and embedding-by-commit caching are not implemented.
 - Deep investigation: the Agent investigates the top 1-3 repositories rather than the planned top
@@ -55,7 +57,7 @@ complete only when it has an implemented user path and a repeatable verification
 ## Not implemented in V1 yet
 
 - GitHub GraphQL batching and OSS Insight integration.
-- Redis-backed task queue, scheduler service, and automatic daily/weekly refresh jobs.
+- Redis-backed task queue and a dedicated long-running scheduler service.
 - README/CONTRIBUTING section embeddings and pgvector recall.
 - MLflow experiment tracking and the required ablation suite.
 - GitHub OAuth personalization, profile export, and profile deletion.
@@ -67,7 +69,6 @@ complete only when it has an implemented user path and a repeatable verification
 ## Recommended implementation order
 
 1. Add the 100-150 human relevance dataset and Recall/nDCG scorers alongside the parser suite.
-2. Add scheduled index freshness and production freshness alerts.
-3. Add vector recall and an ablation comparison against keyword-only retrieval.
-4. Add first-response timing from Issue/PR timeline events.
-5. Add SSE progress, public rate limiting, end-to-end tests, and production monitoring.
+2. Add vector recall and an ablation comparison against keyword-only retrieval.
+3. Add first-response timing from Issue/PR timeline events.
+4. Add SSE progress, public rate limiting, end-to-end tests, and production monitoring.

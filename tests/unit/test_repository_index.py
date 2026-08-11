@@ -71,8 +71,25 @@ def test_index_status_reports_repository_freshness() -> None:
     with Session(engine) as session:
         session.add(make_repository())
         session.commit()
-        status = RepositoryIndex(session).status()
+        status = RepositoryIndex(session).status(now=datetime(2026, 8, 11, tzinfo=UTC))
 
     assert status.ready is True
     assert status.repository_count == 1
     assert status.freshest_at is not None
+    assert status.freshness_state == "fresh"
+    assert status.stale_repository_count == 0
+    assert status.next_refresh_at is not None
+    assert status.next_refresh_at.date().isoformat() == "2026-08-13"
+
+
+def test_index_status_marks_all_old_records_expired() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        session.add(make_repository())
+        session.commit()
+        status = RepositoryIndex(session).status(now=datetime(2026, 9, 10, tzinfo=UTC))
+
+    assert status.freshness_state == "expired"
+    assert status.stale_repository_count == 1
+    assert status.expired_repository_count == 1

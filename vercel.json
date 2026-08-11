@@ -4,5 +4,11 @@
     "app.py": {
       "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/v1/jobs/refresh-index",
+      "schedule": "0 3 * * *"
+    }
+  ]
 }
