@@ -16,6 +16,7 @@ export type Recommendation = {
   risks: string[];
   retrieval_sources?: Array<"local_index" | "github_live">;
   data_fetched_at?: string | null;
+  data_valid_until?: string | null;
 };
 
 export type SearchResponse = {
@@ -116,7 +117,14 @@ export type EvaluationSummary = {
     target: number;
     passed: boolean;
   }>;
-  failures: Array<{ case: string; expected: string; actual: string }>;
+  categories?: Array<{
+    key: string;
+    label: string;
+    passed_fields: number;
+    total_fields: number;
+    accuracy: number;
+  }>;
+  failures: Array<{ case_id?: string; category?: string; case: string; expected: string; actual: string }>;
 };
 
 export type InvestigationEvidence = {

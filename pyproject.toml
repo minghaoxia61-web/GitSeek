@@ -28,6 +28,9 @@ dev = [
 [tool.setuptools.packages.find]
 include = ["apps*", "packages*", "workers*"]
 
+[tool.setuptools.package-data]
+"packages.evaluation" = ["datasets/*.json"]
+
 [tool.pytest.ini_options]
 addopts = "-q"
 testpaths = ["tests"]

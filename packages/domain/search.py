@@ -45,6 +45,7 @@ class Recommendation(BaseModel):
         default_factory=list
     )
     data_fetched_at: datetime | None = None
+    data_valid_until: datetime | None = None
 
 
 class RetrievalSummary(BaseModel):

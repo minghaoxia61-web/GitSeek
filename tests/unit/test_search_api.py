@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from fastapi.testclient import TestClient
 
 from apps.api.dependencies import get_github_client
@@ -74,6 +76,9 @@ def test_search_endpoint_returns_explainable_baseline() -> None:
     assert payload["ranking_version"] == "hybrid-index-baseline-v1"
     assert payload["retrieval"]["github_candidates"] == 1
     assert payload["results"][0]["retrieval_sources"] == ["github_live"]
+    fetched_at = datetime.fromisoformat(payload["results"][0]["data_fetched_at"])
+    valid_until = datetime.fromisoformat(payload["results"][0]["data_valid_until"])
+    assert (valid_until - fetched_at).days == 7
     assert payload["eligible_candidate_count"] == 1
     assert payload["results"][0]["full_name"] == "example/fastapi-demo"
     assert payload["results"][0]["constraint_match"]["license"] == "MATCH"

@@ -22,7 +22,9 @@ complete only when it has an implemented user path and a repeatable verification
 - Editable repeat search, recent search history, explicit empty/error states, and API diagnostics.
 - FastAPI, PostgreSQL migrations, Docker Compose, Vercel API deployment, Sites deployment, and a
   Tauri Windows package workflow.
-- Unit tests and a deterministic smoke evaluation endpoint.
+- Unit tests and a versioned 40-case parser regression dataset with per-category quality results.
+- Seven-day result validity metadata, visible freshness states, and a user-triggered repository
+  recheck for investigation and Issue data.
 
 ## Partial
 
@@ -30,8 +32,8 @@ complete only when it has an implemented user path and a repeatable verification
   size and scheduled freshness are not yet continuously verified.
 - Platform and environment constraints: parsed and displayed, but not all repositories provide
   enough structured evidence for strict enforcement.
-- Data freshness: snapshots and `fetched_at` exist; `valid_until`, TTL policy, and a user-triggered
-  refresh control are still missing.
+- Data freshness: search results now include `fetched_at`, seven-day `valid_until`, and a manual
+  recheck path; scheduled background refresh and production freshness alerts are still missing.
 - Retrieval: GitHub Search, PostgreSQL full-text search, and SQLite fallback exist; vector retrieval
   and embedding-by-commit caching are not implemented.
 - Deep investigation: the Agent investigates the top 1-3 repositories rather than the planned top
@@ -40,8 +42,9 @@ complete only when it has an implemented user path and a repeatable verification
   time, contributor continuity, and PR interaction are not yet complete.
 - Search progress: bounded step summaries are shown after a run; SSE incremental progress is not yet
   implemented.
-- Evaluation: real deterministic parser metrics and failures are available, but the planned 100-150
-  human relevance cases, Recall@10, nDCG@10, pairwise accuracy, and second-annotator review are absent.
+- Evaluation: a versioned 40-case constraint suite, category breakdowns, and visible failures are
+  available, but the planned 100-150 human relevance cases, Recall@10, nDCG@10, pairwise accuracy,
+  and second-annotator review are absent.
 - Observability: Agent traces and durations are persisted; token cost, cache hit rate, and version trend
   dashboards are not complete.
 - Reliability: model and GitHub degradation are visible; public rate limiting, scheduled stale-Issue
@@ -61,9 +64,8 @@ complete only when it has an implemented user path and a repeatable verification
 
 ## Recommended implementation order
 
-1. Add the versioned 100-150 case evaluation dataset and Recall/nDCG scorers.
-2. Add scheduled index freshness, TTL state, and refresh controls.
+1. Add the 100-150 human relevance dataset and Recall/nDCG scorers alongside the parser suite.
+2. Add scheduled index freshness and production freshness alerts.
 3. Add vector recall and an ablation comparison against keyword-only retrieval.
 4. Expand repository health features with Release, PR response, and contributor continuity signals.
 5. Add SSE progress, public rate limiting, end-to-end tests, and production monitoring.
-

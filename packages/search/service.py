@@ -1,4 +1,4 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from uuid import uuid4
 
 from packages.domain.search import (
@@ -93,6 +93,8 @@ class SearchService:
         for result in results:
             result.retrieval_sources = sorted(sources.get(result.full_name, set()))
             result.data_fetched_at = fetched_at.get(result.full_name)
+            if result.data_fetched_at is not None:
+                result.data_valid_until = result.data_fetched_at + timedelta(days=7)
         response = SearchResponse(
             session_id=str(uuid4()),
             query=request.query,

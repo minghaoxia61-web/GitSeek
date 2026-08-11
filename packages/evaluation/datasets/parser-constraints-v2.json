@@ -1,0 +1,53 @@
+{
+  "version": "parser-constraints-v2",
+  "reference_date": "2026-08-01",
+  "cases": [
+    {"id": "language-python", "category": "language", "query": "想学一个 Python 命令行工具", "expected": {"language": "Python"}},
+    {"id": "language-typescript", "category": "language", "query": "找 TypeScript 写的前端工具", "expected": {"language": "TypeScript"}},
+    {"id": "language-javascript", "category": "language", "query": "适合学习的 JavaScript 项目", "expected": {"language": "JavaScript"}},
+    {"id": "language-rust", "category": "language", "query": "Rust 初学者可以阅读的项目", "expected": {"language": "Rust"}},
+    {"id": "language-go", "category": "language", "query": "找一个 Golang 后端项目", "expected": {"language": "Go"}},
+    {"id": "language-java", "category": "language", "query": "Java 入门项目，文档完整", "expected": {"language": "Java"}},
+    {"id": "language-kotlin", "category": "language", "query": "Kotlin Android 示例项目", "expected": {"language": "Kotlin"}},
+    {"id": "language-cpp", "category": "language", "query": "适合阅读的 C++ 图形项目", "expected": {"language": "C++"}},
+    {"id": "language-csharp", "category": "language", "query": "找 C# 编写的桌面应用", "expected": {"language": "C#"}},
+    {"id": "language-dart", "category": "language", "query": "Flutter 新手练习项目", "expected": {"language": "Dart"}},
+
+    {"id": "technology-fastapi", "category": "technology", "query": "Python FastAPI 接口项目", "expected": {"technologies": ["FastAPI"]}},
+    {"id": "technology-django", "category": "technology", "query": "学习 Django 网站开发", "expected": {"technologies": ["Django"]}},
+    {"id": "technology-flask", "category": "technology", "query": "小型 Flask 项目", "expected": {"technologies": ["Flask"]}},
+    {"id": "technology-pytorch", "category": "technology", "query": "PyTorch 模型部署示例", "expected": {"technologies": ["PyTorch"]}},
+    {"id": "technology-tensorflow", "category": "technology", "query": "TensorFlow 图像分类项目", "expected": {"technologies": ["TensorFlow"]}},
+    {"id": "technology-rag", "category": "technology", "query": "中文 RAG 知识库工具", "expected": {"technologies": ["RAG"]}},
+    {"id": "technology-llm", "category": "technology", "query": "可以贡献的 LLM 工具", "expected": {"technologies": ["LLM"]}},
+    {"id": "technology-postgresql", "category": "technology", "query": "使用 PostgreSQL 的后端项目", "expected": {"technologies": ["PostgreSQL"]}},
+    {"id": "technology-redis", "category": "technology", "query": "Redis 缓存实践项目", "expected": {"technologies": ["Redis"]}},
+    {"id": "technology-combined", "category": "technology", "query": "FastAPI、PostgreSQL 和 Redis 后端项目", "expected": {"technologies": ["FastAPI", "PostgreSQL", "Redis"]}},
+
+    {"id": "license-mit", "category": "license", "query": "MIT 许可证的学习项目", "expected": {"licenses": ["MIT"]}},
+    {"id": "license-apache", "category": "license", "query": "Apache 2.0 许可证的工具", "expected": {"licenses": ["Apache-2.0"]}},
+    {"id": "license-gpl", "category": "license", "query": "找一个 GPL-3.0 的安全工具", "expected": {"licenses": ["GPL-3.0"]}},
+    {"id": "license-bsd", "category": "license", "query": "BSD-3-Clause 许可证项目", "expected": {"licenses": ["BSD-3-Clause"]}},
+
+    {"id": "purpose-default", "category": "purpose", "query": "想找一个项目学习代码结构", "expected": {"purpose": "learning"}},
+    {"id": "purpose-contribution", "category": "purpose", "query": "第一次参与开源贡献", "expected": {"purpose": "contribution"}},
+    {"id": "purpose-issue", "category": "purpose", "query": "找有新手 issue 的项目", "expected": {"purpose": "contribution"}},
+    {"id": "purpose-pr", "category": "purpose", "query": "想提交第一个 pull request", "expected": {"purpose": "contribution"}},
+
+    {"id": "hours-2", "category": "time_budget", "query": "每周 2 小时学习 Python", "expected": {"weekly_hours": 2}},
+    {"id": "hours-5", "category": "time_budget", "query": "一周大约 5 个小时做开源贡献", "expected": {"weekly_hours": 5}},
+    {"id": "hours-10", "category": "time_budget", "query": "每周只有 10 小时，找个 Rust 项目", "expected": {"weekly_hours": 10}},
+
+    {"id": "platform-windows", "category": "platform", "query": "Windows 可运行的中文 OCR 项目", "expected": {"platform": "Windows"}},
+    {"id": "platform-macos", "category": "platform", "query": "适合 macOS 的效率工具", "expected": {"platform": "macOS"}},
+    {"id": "platform-linux", "category": "platform", "query": "Linux 服务器监控项目", "expected": {"platform": "Linux"}},
+
+    {"id": "activity-half-year", "category": "activity", "query": "最近半年更新的 FastAPI 项目", "expected": {"pushed_after": "2026-01-30"}},
+    {"id": "activity-year", "category": "activity", "query": "近一年活跃的 RAG 工具", "expected": {"pushed_after": "2025-08-01"}},
+    {"id": "activity-days", "category": "activity", "query": "最近 30 天更新的 Flask 项目", "expected": {"pushed_after": "2026-07-02"}},
+    {"id": "activity-months", "category": "activity", "query": "近 3 个月更新的 Django 项目", "expected": {"pushed_after": "2026-05-03"}},
+
+    {"id": "archive-default", "category": "archive", "query": "找一个 FastAPI 项目", "expected": {"exclude_archived": true}},
+    {"id": "archive-included", "category": "archive", "query": "包含归档仓库的 FastAPI 搜索", "expected": {"exclude_archived": false}}
+  ]
+}

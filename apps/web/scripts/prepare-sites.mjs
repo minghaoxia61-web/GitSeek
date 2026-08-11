@@ -373,7 +373,10 @@ async function searchRepositories(request, env, prepared = null) {
         reasons,
         risks,
         retrieval_sources: [...(sourceMap.get(repo.full_name) || [])].sort(),
-        data_fetched_at: fetchedAtMap.get(repo.full_name) || null
+        data_fetched_at: fetchedAtMap.get(repo.full_name) || null,
+        data_valid_until: fetchedAtMap.get(repo.full_name)
+          ? new Date(new Date(fetchedAtMap.get(repo.full_name)).getTime() + 7 * 86_400_000).toISOString()
+          : null
       };
     })
   };

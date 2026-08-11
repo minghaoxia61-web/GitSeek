@@ -59,6 +59,10 @@ def test_local_index_returns_results_when_github_is_rate_limited() -> None:
         assert response.retrieval.local_candidates == 1
         assert response.results[0].full_name == "example/fastapi-indexed"
         assert response.results[0].retrieval_sources == ["local_index"]
+        assert response.results[0].data_fetched_at is not None
+        assert response.results[0].data_valid_until is not None
+        validity = response.results[0].data_valid_until - response.results[0].data_fetched_at
+        assert validity.days == 7
 
 
 def test_index_status_reports_repository_freshness() -> None:

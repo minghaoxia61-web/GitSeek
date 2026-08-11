@@ -117,6 +117,9 @@ class ProductPersistence:
                             "data_fetched_at": result.data_fetched_at.isoformat()
                             if result.data_fetched_at
                             else None,
+                            "data_valid_until": result.data_valid_until.isoformat()
+                            if result.data_valid_until
+                            else None,
                         },
                     )
                 )

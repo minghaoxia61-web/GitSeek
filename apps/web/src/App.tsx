@@ -90,6 +90,22 @@ function Signal({ tone = "green" }: { tone?: "green" | "amber" | "red" }) {
   return <span className={`signal signal--${tone}`} aria-hidden="true" />;
 }
 
+function DataFreshness({ timestamp, validUntil }: { timestamp?: string | null; validUntil?: string | null }) {
+  if (!timestamp) return <span className="freshness freshness--unknown"><Signal tone="amber" /> 数据时间未知</span>;
+  const days = Math.max(0, Date.now() - new Date(timestamp).getTime()) / 86_400_000;
+  const expired = Boolean(validUntil && Date.now() > new Date(validUntil).getTime());
+  const state = expired
+    ? { label: `${timestamp.slice(0, 10)} 核验 · 已过期`, tone: "red" as const, className: "stale" }
+    : days <= 1
+    ? { label: "24 小时内核验", tone: "green" as const, className: "fresh" }
+    : days <= 7
+      ? { label: "7 天内核验", tone: "green" as const, className: "fresh" }
+      : days <= 30
+        ? { label: `${Math.floor(days)} 天前核验`, tone: "amber" as const, className: "aging" }
+        : { label: `${timestamp.slice(0, 10)} 核验`, tone: "red" as const, className: "stale" };
+  return <span className={`freshness freshness--${state.className}`} title={new Date(timestamp).toLocaleString("zh-CN")}><Signal tone={state.tone} /> {state.label}</span>;
+}
+
 function readSavedEntries(): SavedEntry[] {
   try {
     const detailed = JSON.parse(localStorage.getItem(SAVED_ENTRIES_KEY) ?? "[]") as SavedEntry[];
@@ -202,6 +218,7 @@ function Shell({
         </nav>
 
         <div className="sidebar-footer">
+          <button onClick={() => setView("evals")} className={view === "evals" ? "active" : ""}><span className="nav-glyph nav-glyph--evals" />质量记录</button>
           <button onClick={() => setView("settings")} className={view === "settings" ? "active" : ""}><span className="nav-glyph nav-glyph--settings" />设置</button>
           <a href="https://github.com/minghaoxia61-web/GitSeek" target="_blank" rel="noreferrer">GitHub ↗</a>
         </div>
@@ -343,7 +360,7 @@ function ResultCard({
           <div className="ledger-risk"><b>留意</b><span>{repo.risks[0] || "未发现明显风险，仍建议阅读仓库说明。"}</span></div>
         </div>
         <div className="result-footer">
-          <span>{repo.retrieval_sources?.includes("github_live") ? "GitHub 实时数据" : "已同步索引"}{repo.data_fetched_at ? ` · 核验于 ${repo.data_fetched_at.slice(0, 10)}` : ""}</span>
+          <span className="result-provenance">{repo.retrieval_sources?.includes("github_live") ? "GitHub 实时数据" : "已同步索引"}<DataFreshness timestamp={repo.data_fetched_at} validUntil={repo.data_valid_until} /></span>
           <div><button className={`save-toggle ${saved ? "selected" : ""}`} onClick={onSave}>{saved ? "已收藏" : "收藏"}</button><button className={`compare-toggle ${selected ? "selected" : ""}`} onClick={onSelect}>{selected ? "已加入对比" : "加入对比"}</button><button onClick={onDetail}>查看档案 →</button></div>
         </div>
       </div>
@@ -432,6 +449,7 @@ function DetailView({
   issueStatus,
   onBack,
   onCompare,
+  onRefresh,
   onFeedback,
 }: {
   repo: Recommendation;
@@ -441,6 +459,7 @@ function DetailView({
   issueStatus: "loading" | "ready" | "unavailable";
   onBack: () => void;
   onCompare: () => void;
+  onRefresh: () => void;
   onFeedback: (action: "helpful" | "not_relevant" | "saved" | "opened_issue", reason?: string) => Promise<void>;
 }) {
   const [feedbackMessage, setFeedbackMessage] = useState("");
@@ -482,10 +501,10 @@ function DetailView({
           <div className="kicker">{status === "loading" ? "正在读取仓库信息" : status === "ready" ? `项目档案 · ${investigation?.confidence === "high" ? "高" : investigation?.confidence === "medium" ? "中" : "低"}置信度` : "项目档案 · 搜索阶段数据"}</div>
           <h1>{repo.full_name}</h1>
           <p>{investigation?.description ?? repo.description}</p>
-          <div className="repo-meta"><span>★ {formatNumber(repo.stars)}</span>{repo.language && <span>{repo.language}</span>}{repo.license_spdx && <span>{repo.license_spdx}</span>}<span>Default · {investigation?.default_branch ?? "main"}</span></div>
+          <div className="repo-meta"><span>★ {formatNumber(repo.stars)}</span>{repo.language && <span>{repo.language}</span>}{repo.license_spdx && <span>{repo.license_spdx}</span>}<span>Default · {investigation?.default_branch ?? "main"}</span><DataFreshness timestamp={investigation?.fetched_at ?? repo.data_fetched_at} validUntil={investigation ? null : repo.data_valid_until} /></div>
         </div>
         <ScoreDial value={dossierScore} />
-        <div className="detail-actions"><button className="secondary-button" onClick={onCompare}>加入对比</button><button className="secondary-button" onClick={() => feedback("saved")}>收藏项目</button><a className="primary-button" href={repo.html_url} target="_blank" rel="noreferrer">打开 GitHub ↗</a></div>
+        <div className="detail-actions"><button className="secondary-button" onClick={onRefresh} disabled={status === "loading" || issueStatus === "loading"}>{status === "loading" || issueStatus === "loading" ? "正在核验…" : "重新核验"}</button><button className="secondary-button" onClick={onCompare}>加入对比</button><button className="secondary-button" onClick={() => feedback("saved")}>收藏项目</button><a className="primary-button" href={repo.html_url} target="_blank" rel="noreferrer">打开 GitHub ↗</a></div>
       </section>
 
       {status === "loading" && <div className="detail-status"><i className="spinner" /> 正在读取社区档案、仓库目录、工作流和 README…</div>}
@@ -594,6 +613,7 @@ function EvalsView() {
           {summary.metrics.map((metric) => <article className="metric-card" key={metric.key}><small>{metric.label}</small><strong>{metric.value}{metric.unit}</strong><span className={metric.passed ? "passed" : "failed"}>{metric.passed ? "达到目标" : "未达到目标"}</span><p>目标 ≥ {metric.target}{metric.unit}</p></article>)}
           <article className="metric-card"><small>固定测试样本</small><strong>{summary.sample_count}</strong><span className="passed">{summary.dataset_version}</span><p>版本 {summary.version}</p></article>
         </section>
+        {(summary.categories ?? []).length > 0 && <article className="panel eval-categories"><div className="panel-title"><span>覆盖范围</span><small>按约束类型拆分</small></div><div className="category-grid">{summary.categories?.map((category) => <div key={category.key}><span>{category.label}</span><strong>{category.accuracy}%</strong><small>{category.passed_fields} / {category.total_fields} 个字段正确</small><i><b style={{ width: `${category.accuracy}%` }} /></i></div>)}</div></article>}
         <article className="panel eval-failures"><div className="panel-title"><span>失败样本</span><small>{summary.failures.length ? `${summary.failures.length} 项需要处理` : "全部通过"}</small></div>{summary.failures.length ? summary.failures.map((failure) => <div className="failure-row" key={`${failure.case}-${failure.expected}`}><b>{failure.case}</b><span>期望：{failure.expected}</span><span>实际：{failure.actual}</span></div>) : <p className="eval-success">当前固定用例全部通过。新增解析规则时仍需扩充困难样本。</p>}</article>
       </>}
     </div>
@@ -867,8 +887,7 @@ export default function App() {
     setCompare((current) => current.includes(name) ? current.filter((item) => item !== name) : current.length < 3 ? [...current, name] : current);
   }
 
-  function openDetail(repo: Recommendation) {
-    setSelectedRepo(repo);
+  function refreshDetail(repo: Recommendation) {
     setInvestigation(null);
     setInvestigationStatus("loading");
     setIssues([]);
@@ -888,6 +907,12 @@ export default function App() {
         setIssueStatus("ready");
       })
       .catch(() => setIssueStatus("unavailable"));
+  }
+
+  function openDetail(repo: Recommendation) {
+    setSelectedRepo(repo);
+    setView("detail");
+    refreshDetail(repo);
   }
 
   async function recordFeedback(repo: Recommendation, action: "helpful" | "not_relevant" | "saved" | "opened_issue", reason?: string) {
@@ -954,7 +979,7 @@ export default function App() {
       {view === "discover" && <DiscoverView onSearch={search} initialQuery={searchDraft.query} initialOptions={searchDraft.options} history={searchHistory} />}
       {view === "results" && <ResultsView data={data} agentRun={agentRun} compare={compare} saved={savedEntries.map((item) => item.repository)} toggleCompare={toggleCompare} onSave={(repo) => void (savedEntries.some((item) => item.repository === repo.full_name) ? removeSavedRepository(repo.full_name) : saveRepository(repo))} problem={searchProblem} notice={searchNotice} onNewSearch={() => setView("discover")} onDetail={(repo) => { setDetailParent("results"); openDetail(repo); }} />}
       {view === "saved" && <SavedView entries={savedEntries} onOpen={(repo) => { setDetailParent("saved"); openDetail(repo); }} onRemove={(repository) => void removeSavedRepository(repository)} onDiscover={() => setView("discover")} />}
-      {view === "detail" && selectedRepo && <DetailView repo={selectedRepo} investigation={investigation} status={investigationStatus} issues={issues} issueStatus={issueStatus} onBack={() => setView(detailParent)} onCompare={() => toggleCompare(selectedRepo.full_name)} onFeedback={submitFeedback} />}
+      {view === "detail" && selectedRepo && <DetailView repo={selectedRepo} investigation={investigation} status={investigationStatus} issues={issues} issueStatus={issueStatus} onBack={() => setView(detailParent)} onCompare={() => toggleCompare(selectedRepo.full_name)} onRefresh={() => refreshDetail(selectedRepo)} onFeedback={submitFeedback} />}
       {view === "compare" && <CompareView repos={compareRepos} onDiscover={() => setView(data.query ? "results" : "discover")} onDetail={(repo) => { setDetailParent(data.query ? "results" : "saved"); openDetail(repo); }} onRemove={toggleCompare} />}
       {view === "evals" && <EvalsView />}
       {view === "settings" && <SettingsView connection={connection} onApiChanged={() => setApiRevision((current) => current + 1)} />}
