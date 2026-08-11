@@ -21,6 +21,10 @@ repository snapshots, refreshed Issues, feedback, and saved repositories have da
 persistence. The public Sites build uses D1 for the same product activity, while the FastAPI stack
 uses PostgreSQL.
 
+The implementation is a working product slice, not the entire planning document. See
+[`docs/requirements-status.md`](docs/requirements-status.md) for the current complete, partial, and
+pending V1 requirements.
+
 ## Local development
 
 Requires Python 3.12 or newer.

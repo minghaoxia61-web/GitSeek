@@ -18,8 +18,8 @@ candidate retrieval -> hard filters -> deterministic ranking
 
 The implementation provides the API runtime, repository persistence, a typed GitHub synchronization
 path, deterministic ranking and evaluation, and bounded Agent orchestration. Model-assisted query
-understanding can be added later without making it responsible for hard constraints or factual
-verification.
+understanding is optional and remains isolated from hard constraints and factual verification; when
+it is unavailable, the same workflow continues with the versioned rule parser.
 
 ## Agent run lifecycle
 

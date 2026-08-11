@@ -14,8 +14,8 @@ React and Vite application with a dense repository-intelligence visual system.
 - Deterministic evaluation results with visible failure cases
 
 The search console calls the FastAPI service through Vite's `/api` development proxy. If the API
-is unavailable, the interface clearly labels and displays calibrated demo data instead of failing
-with an empty screen.
+is unavailable, the interface preserves the submitted query and shows a clear recovery state; it
+does not substitute demonstration repositories for live results.
 
 ## Development
 

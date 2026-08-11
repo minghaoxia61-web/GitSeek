@@ -31,6 +31,13 @@ type SavedEntry = {
   snapshot: Recommendation | null;
 };
 
+type SearchHistoryEntry = {
+  query: string;
+  searchedAt: string;
+  resultCount: number;
+  options: SearchOptions;
+};
+
 const DEFAULT_SEARCH_OPTIONS: SearchOptions = {
   purpose: "learning",
   weeklyHours: null,
@@ -41,6 +48,7 @@ const DEFAULT_SEARCH_OPTIONS: SearchOptions = {
 };
 
 const SAVED_ENTRIES_KEY = "gitseek:saved-entries";
+const SEARCH_HISTORY_KEY = "gitseek:search-history";
 
 const sampleQueries = [
   "适合初学者的 FastAPI 项目，MIT 许可证，最近半年活跃",
@@ -98,6 +106,19 @@ function readSavedEntries(): SavedEntry[] {
 function persistSavedEntries(entries: SavedEntry[]) {
   localStorage.setItem(SAVED_ENTRIES_KEY, JSON.stringify(entries));
   localStorage.setItem("gitseek:saved", JSON.stringify(entries.map((item) => item.repository)));
+}
+
+function readSearchHistory(): SearchHistoryEntry[] {
+  try {
+    const history = JSON.parse(localStorage.getItem(SEARCH_HISTORY_KEY) ?? "[]") as SearchHistoryEntry[];
+    return Array.isArray(history) ? history.filter((item) => item?.query && item?.options).slice(0, 8) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistSearchHistory(entries: SearchHistoryEntry[]) {
+  localStorage.setItem(SEARCH_HISTORY_KEY, JSON.stringify(entries));
 }
 
 function savedEntryAsRecommendation(entry: SavedEntry): Recommendation {
@@ -200,15 +221,19 @@ function Shell({
   );
 }
 
-function DiscoverView({ onSearch }: { onSearch: (query: string, options: SearchOptions) => Promise<void> }) {
-  const [query, setQuery] = useState("");
-  const [mode, setMode] = useState<"learn" | "contribute">("learn");
+function DiscoverView({ onSearch, initialQuery, initialOptions, history }: { onSearch: (query: string, options: SearchOptions) => Promise<void>; initialQuery: string; initialOptions: SearchOptions; history: SearchHistoryEntry[] }) {
+  const [query, setQuery] = useState(initialQuery);
+  const [mode, setMode] = useState<"learn" | "contribute">(initialOptions.purpose === "contribution" ? "contribute" : "learn");
   const [advanced, setAdvanced] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [constraints, setConstraints] = useState<string[]>([]);
-  const [weeklyHours, setWeeklyHours] = useState<number | null>(null);
-  const [platform, setPlatform] = useState("");
-  const [projectSize, setProjectSize] = useState<"" | "small" | "medium" | "large">("");
+  const [constraints, setConstraints] = useState<string[]>([
+    ...(initialOptions.licenses.length ? ["MIT / Apache"] : []),
+    ...(initialOptions.recentOnly ? ["半年内活跃"] : []),
+    ...(initialOptions.platform === "Windows" ? ["支持 Windows"] : []),
+  ]);
+  const [weeklyHours, setWeeklyHours] = useState<number | null>(initialOptions.weeklyHours);
+  const [platform, setPlatform] = useState(initialOptions.platform ?? "");
+  const [projectSize, setProjectSize] = useState<"" | "small" | "medium" | "large">(initialOptions.projectSize ?? "");
 
   const constraintOptions = ["MIT / Apache", "半年内活跃", "支持 Windows"];
 
@@ -230,6 +255,12 @@ function DiscoverView({ onSearch }: { onSearch: (query: string, options: SearchO
       recentOnly: constraints.includes("半年内活跃"),
       projectSize: projectSize || null,
     });
+    setLoading(false);
+  }
+
+  async function repeatSearch(entry: SearchHistoryEntry) {
+    setLoading(true);
+    await onSearch(entry.query, entry.options);
     setLoading(false);
   }
 
@@ -275,6 +306,7 @@ function DiscoverView({ onSearch }: { onSearch: (query: string, options: SearchO
       </section>
 
       <section className="sample-strip">
+        {history.length > 0 && <div className="recent-searches"><span>最近搜索</span>{history.slice(0, 3).map((entry) => <button key={`${entry.query}-${entry.searchedAt}`} onClick={() => void repeatSearch(entry)} disabled={loading}><span>{entry.query}</span><small>{entry.resultCount} 个结果 · {new Date(entry.searchedAt).toLocaleDateString("zh-CN")}</small><i>再次搜索 →</i></button>)}</div>}
         <span>也可以从这里开始</span>
         {sampleQueries.map((item) => <button key={item} onClick={() => setQuery(item)}>{item}<i>→</i></button>)}
       </section>
@@ -304,14 +336,14 @@ function ResultCard({
           <div><span className="result-rank">{String(repo.rank).padStart(2, "0")}</span><span className="repo-owner">{repo.full_name.split("/")[0]} /</span><h3>{repo.full_name.split("/")[1]}</h3></div>
           <strong className="plain-score">{repo.score.toFixed(0)}<small>/100</small></strong>
         </div>
-        <p>{repo.description}</p>
-        <div className="repo-meta"><span>★ {formatNumber(repo.stars)}</span><span>{repo.language}</span><span>{repo.license_spdx ?? "无许可证"}</span><span>更新于 {repo.pushed_at?.slice(0, 10)}</span></div>
+        <p>{repo.description || "这个仓库暂时没有提供简介。"}</p>
+        <div className="repo-meta"><span>★ {formatNumber(repo.stars)}</span>{repo.language && <span>{repo.language}</span>}<span>{repo.license_spdx ?? "无许可证"}</span>{repo.pushed_at && <span>更新于 {repo.pushed_at.slice(0, 10)}</span>}</div>
         <div className="evidence-ledger">
           <div><b>推荐</b><span>{repo.reasons.slice(0, 2).join("；")}</span></div>
           <div className="ledger-risk"><b>留意</b><span>{repo.risks[0] || "未发现明显风险，仍建议阅读仓库说明。"}</span></div>
         </div>
         <div className="result-footer">
-          <span>{repo.retrieval_sources?.includes("github_live") ? "GitHub 实时数据" : "已同步索引"}</span>
+          <span>{repo.retrieval_sources?.includes("github_live") ? "GitHub 实时数据" : "已同步索引"}{repo.data_fetched_at ? ` · 核验于 ${repo.data_fetched_at.slice(0, 10)}` : ""}</span>
           <div><button className={`save-toggle ${saved ? "selected" : ""}`} onClick={onSave}>{saved ? "已收藏" : "收藏"}</button><button className={`compare-toggle ${selected ? "selected" : ""}`} onClick={onSelect}>{selected ? "已加入对比" : "加入对比"}</button><button onClick={onDetail}>查看档案 →</button></div>
         </div>
       </div>
@@ -409,9 +441,10 @@ function DetailView({
   issueStatus: "loading" | "ready" | "unavailable";
   onBack: () => void;
   onCompare: () => void;
-  onFeedback: (action: "helpful" | "not_relevant" | "saved" | "opened_issue") => Promise<void>;
+  onFeedback: (action: "helpful" | "not_relevant" | "saved" | "opened_issue", reason?: string) => Promise<void>;
 }) {
   const [feedbackMessage, setFeedbackMessage] = useState("");
+  const [showFeedbackReasons, setShowFeedbackReasons] = useState(false);
   const scores = investigation?.scores;
   const dossierScore = scores
     ? (scores.documentation + scores.engineering + scores.learning_friendliness) / 3
@@ -434,8 +467,9 @@ function DetailView({
   ] as const;
   const risks = investigation?.risks ?? repo.risks;
 
-  async function feedback(action: "helpful" | "not_relevant" | "saved") {
-    await onFeedback(action);
+  async function feedback(action: "helpful" | "not_relevant" | "saved", reason?: string) {
+    await onFeedback(action, reason);
+    setShowFeedbackReasons(false);
     setFeedbackMessage(action === "helpful" ? "已记录：推荐有帮助" : action === "saved" ? "已收藏到当前设备" : "已记录，我们会把它作为失败样本检查");
   }
 
@@ -448,7 +482,7 @@ function DetailView({
           <div className="kicker">{status === "loading" ? "正在读取仓库信息" : status === "ready" ? `项目档案 · ${investigation?.confidence === "high" ? "高" : investigation?.confidence === "medium" ? "中" : "低"}置信度` : "项目档案 · 搜索阶段数据"}</div>
           <h1>{repo.full_name}</h1>
           <p>{investigation?.description ?? repo.description}</p>
-          <div className="repo-meta"><span>★ {formatNumber(repo.stars)}</span><span>{repo.language}</span><span>{repo.license_spdx}</span><span>Default · {investigation?.default_branch ?? "main"}</span></div>
+          <div className="repo-meta"><span>★ {formatNumber(repo.stars)}</span>{repo.language && <span>{repo.language}</span>}{repo.license_spdx && <span>{repo.license_spdx}</span>}<span>Default · {investigation?.default_branch ?? "main"}</span></div>
         </div>
         <ScoreDial value={dossierScore} />
         <div className="detail-actions"><button className="secondary-button" onClick={onCompare}>加入对比</button><button className="secondary-button" onClick={() => feedback("saved")}>收藏项目</button><a className="primary-button" href={repo.html_url} target="_blank" rel="noreferrer">打开 GitHub ↗</a></div>
@@ -479,6 +513,15 @@ function DetailView({
             {["GitHub 仓库元数据", "社区健康档案", "根目录与 CI 工作流", "README 快速开始标记"].map((source, index) => <div className="coverage-row" key={source}><span>0{index + 1}</span><b>{source}</b><small>{status === "ready" ? "已读取" : "等待连接"}</small></div>)}
           </article>
 
+          <article className="panel start-path-panel">
+            <div className="panel-title"><span>建议开始方式</span><small>开始前仍需人工确认</small></div>
+            <ol>
+              <li><b>先确认项目是否适合你</b><p>{signals?.has_readme ? "阅读 README 的用途、安装条件和快速开始。" : "仓库未检测到明确 README，先查看项目首页与最近活动。"}</p></li>
+              <li><b>再准备本地环境</b><p>{signals?.has_contributing ? "按贡献指南准备环境；只复制你理解并确认安全的命令。" : "未发现贡献指南，先从文档和依赖文件确认环境，不要直接运行陌生脚本。"}</p></li>
+              <li><b>最后选择一个小任务</b><p>{issues.length ? `优先查看下方 ${issues.length} 个未认领候选，并在开始前确认仍为开放状态。` : "当前没有可靠候选 Issue，可以先阅读讨论区或从文档改进开始。"}</p></li>
+            </ol>
+          </article>
+
           <article className="panel issues-panel">
             <div className="panel-title"><span>适合开始的 Issue</span><small>{issueStatus === "ready" ? `${issues.length} 个候选` : issueStatus === "loading" ? "正在刷新状态" : "暂不可用"}</small></div>
             {issueStatus === "loading" && <div className="issues-loading"><i className="spinner" /> 正在检查开放状态、认领情况与任务描述…</div>}
@@ -492,7 +535,7 @@ function DetailView({
           <article className="panel"><div className="panel-title"><span>工程信号</span><small>仓库文件检查</small></div>{signalRows.map(([label, value]) => <div className="audit-row" key={label}><Signal tone={value === undefined ? "amber" : value ? "green" : "red"} /><span>{label}</span><b>{value === undefined ? "读取中" : value ? "已发现" : "未发现"}</b></div>)}</article>
           <article className="panel risk-panel"><div className="panel-title"><span>开始前留意</span><small>已知风险</small></div>{risks.length ? risks.map((risk, index) => <div key={risk}><b>0{index + 1}</b><p>{risk}</p></div>) : <p className="empty-copy">当前规则未发现显著风险，仍建议阅读原始贡献说明。</p>}</article>
           <article className="panel path-card"><small>检查范围</small><strong>只读取公开信息</strong><p>{investigation?.limitations[0] ?? "连接调查接口后，这里会显示本次检查没有覆盖的内容。"}</p><a href={repo.html_url} target="_blank" rel="noreferrer">到 GitHub 人工确认 →</a></article>
-          <article className="panel feedback-card"><div className="panel-title"><span>这条推荐怎么样？</span><small>反馈用于回归检查</small></div><div><button onClick={() => feedback("helpful")}>有帮助</button><button onClick={() => feedback("not_relevant")}>不太相关</button></div>{feedbackMessage && <p>{feedbackMessage}</p>}</article>
+          <article className="panel feedback-card"><div className="panel-title"><span>这条推荐怎么样？</span><small>反馈用于回归检查</small></div><div><button onClick={() => feedback("helpful")}>有帮助</button><button onClick={() => setShowFeedbackReasons((current) => !current)}>不太相关</button></div>{showFeedbackReasons && <div className="feedback-reasons" aria-label="不相关原因">{["技术不符", "项目停更", "难度太高", "许可证问题", "没有合适 Issue", "其他"].map((reason) => <button key={reason} onClick={() => feedback("not_relevant", reason)}>{reason}</button>)}</div>}{feedbackMessage && <p>{feedbackMessage}</p>}</article>
         </aside>
       </div>
     </div>
@@ -515,7 +558,7 @@ function CompareView({ repos, onDiscover, onDetail, onRemove }: { repos: Recomme
       <section className="page-heading"><div className="kicker">项目对比</div><h1>并排看清差异</h1><p>综合分只是入口。这里重点比较相关度、维护情况、许可证和主要风险。</p></section>
       <div className="compare-grid">
         <div className="compare-labels"><div className="compare-empty"><span>比较项</span></div>{["综合匹配", "技术相关", "维护活跃", "项目规模", "许可证", "最近推送", "主要风险"].map((label) => <div key={label}>{label}</div>)}</div>
-        {items.map((repo, index) => <article className="compare-column" key={repo.full_name}><header><div className="compare-column-head"><small>候选 {index + 1}</small><button onClick={() => onRemove(repo.full_name)} aria-label={`移除 ${repo.full_name}`}>移除</button></div><h3>{repo.full_name}</h3><p>{repo.description}</p></header><div><ScoreDial value={repo.score} small /></div><div><strong>{repo.score_breakdown.relevance?.toFixed(0) ?? "—"}</strong><span>/ 35</span></div><div><strong>{repo.score_breakdown.activity?.toFixed(0) ?? "—"}</strong><span>/ 30</span></div><div><strong>{formatNumber(repo.stars)}</strong><span> Stars</span></div><div><span className="license-badge">{repo.license_spdx}</span></div><div><strong>{repo.pushed_at?.slice(0, 10)}</strong></div><div className="compare-risk">{repo.risks[0]}</div><footer><button onClick={() => onDetail(repo)}>查看项目档案 →</button></footer></article>)}
+        {items.map((repo, index) => <article className="compare-column" key={repo.full_name}><header><div className="compare-column-head"><small>候选 {index + 1}</small><button onClick={() => onRemove(repo.full_name)} aria-label={`移除 ${repo.full_name}`}>移除</button></div><h3>{repo.full_name}</h3><p>{repo.description || "暂无仓库简介"}</p></header><div><ScoreDial value={repo.score} small /></div><div><strong>{repo.score_breakdown.relevance?.toFixed(0) ?? "—"}</strong><span>/ 35</span></div><div><strong>{repo.score_breakdown.activity?.toFixed(0) ?? "—"}</strong><span>/ 30</span></div><div><strong>{formatNumber(repo.stars)}</strong><span> Stars</span></div><div><span className="license-badge">{repo.license_spdx ?? "未声明"}</span></div><div><strong>{repo.pushed_at?.slice(0, 10) ?? "未知"}</strong></div><div className="compare-risk">{repo.risks[0] ?? "未发现明显风险"}</div><footer><button onClick={() => onDetail(repo)}>查看项目档案 →</button></footer></article>)}
         {items.length < 3 && <button className="add-column" onClick={onDiscover}>+<span>添加一个候选项目</span></button>}
       </div>
     </div>
@@ -715,6 +758,8 @@ export default function App() {
   const [issueStatus, setIssueStatus] = useState<"loading" | "ready" | "unavailable">("unavailable");
   const [compare, setCompare] = useState<string[]>([]);
   const [savedEntries, setSavedEntries] = useState<SavedEntry[]>(readSavedEntries);
+  const [searchHistory, setSearchHistory] = useState<SearchHistoryEntry[]>(readSearchHistory);
+  const [searchDraft, setSearchDraft] = useState<{ query: string; options: SearchOptions }>({ query: "", options: DEFAULT_SEARCH_OPTIONS });
   const [agentRun, setAgentRun] = useState<AgentRunResponse | null>(null);
   const [searchProblem, setSearchProblem] = useState<SearchProblem | null>(null);
   const [searchNotice, setSearchNotice] = useState<string | null>(null);
@@ -761,6 +806,15 @@ export default function App() {
     return () => { active = false; };
   }, [apiRevision]);
 
+  function rememberSearch(query: string, options: SearchOptions, resultCount: number) {
+    const entry: SearchHistoryEntry = { query, options, resultCount, searchedAt: new Date().toISOString() };
+    setSearchHistory((current) => {
+      const next = [entry, ...current.filter((item) => item.query !== query)].slice(0, 8);
+      try { persistSearchHistory(next); } catch { /* Search still works when storage is unavailable. */ }
+      return next;
+    });
+  }
+
   async function search(query: string, options: SearchOptions) {
     const recentDate = new Date();
     recentDate.setDate(recentDate.getDate() - 183);
@@ -776,6 +830,7 @@ export default function App() {
       investigate_limit: 2,
     };
     const pushedAfter = options.recentOnly ? recentDate.toISOString().slice(0, 10) : null;
+    setSearchDraft({ query, options });
     setSearchProblem(null);
     setSearchNotice(null);
     try {
@@ -786,6 +841,7 @@ export default function App() {
       });
       setAgentRun(run);
       setData(run.search);
+      rememberSearch(query, options, run.search.results.length);
     } catch (agentError) {
       try {
         const response = await apiFetch<SearchResponse>("/api/v1/search", {
@@ -795,6 +851,7 @@ export default function App() {
         });
         setData(response);
         setAgentRun(null);
+        rememberSearch(query, options, response.results.length);
         const agentProblem = problemFrom(agentError);
         setSearchNotice(agentProblem.kind === "rate_limit" ? "Agent 请求达到限额，已自动切换为基础搜索。" : "Agent 暂时不可用，已自动切换为基础搜索。");
       } catch (searchError) {
@@ -833,12 +890,12 @@ export default function App() {
       .catch(() => setIssueStatus("unavailable"));
   }
 
-  async function recordFeedback(repo: Recommendation, action: "helpful" | "not_relevant" | "saved" | "opened_issue") {
+  async function recordFeedback(repo: Recommendation, action: "helpful" | "not_relevant" | "saved" | "opened_issue", reason?: string) {
     let deviceId: string | null = null;
     try {
       deviceId = getDeviceId();
       const feedbackLog = JSON.parse(localStorage.getItem("gitseek:feedback") ?? localStorage.getItem("openscout:feedback") ?? "[]") as Array<Record<string, string>>;
-      localStorage.setItem("gitseek:feedback", JSON.stringify([...feedbackLog.slice(-99), { repository: repo.full_name, action, query: data.query, createdAt: new Date().toISOString() }]));
+      localStorage.setItem("gitseek:feedback", JSON.stringify([...feedbackLog.slice(-99), { repository: repo.full_name, action, reason: reason ?? "", query: data.query, createdAt: new Date().toISOString() }]));
     } catch {
       // Storage can be unavailable in a locked-down browser; API feedback still proceeds.
     }
@@ -846,7 +903,7 @@ export default function App() {
       await apiFetch<unknown>("/api/v1/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repository: repo.full_name, action, query: data.query, session_id: data.session_id || null, device_id: deviceId }),
+        body: JSON.stringify({ repository: repo.full_name, action, reason: reason || null, query: data.query, session_id: data.session_id || null, device_id: deviceId }),
       });
     } catch {
       // Immediate UI feedback still works when the API is offline.
@@ -884,21 +941,21 @@ export default function App() {
     }
   }
 
-  async function submitFeedback(action: "helpful" | "not_relevant" | "saved" | "opened_issue") {
+  async function submitFeedback(action: "helpful" | "not_relevant" | "saved" | "opened_issue", reason?: string) {
     if (!selectedRepo) return;
     if (action === "saved") await saveRepository(selectedRepo);
-    else await recordFeedback(selectedRepo, action);
+    else await recordFeedback(selectedRepo, action, reason);
   }
 
   const compareRepos = useMemo(() => compare.map((name) => data.results.find((repo) => repo.full_name === name) ?? savedEntries.find((entry) => entry.repository === name)?.snapshot).filter((repo): repo is Recommendation => Boolean(repo)), [compare, data.results, savedEntries]);
 
   return (
     <Shell view={view} setView={setView} compareCount={compare.length} savedCount={savedEntries.length} hasResults={Boolean(data.query)} detailParent={detailParent} connection={connection}>
-      {view === "discover" && <DiscoverView onSearch={search} />}
-      {view === "results" && <ResultsView data={data} agentRun={agentRun} compare={compare} saved={savedEntries.map((item) => item.repository)} toggleCompare={toggleCompare} onSave={(repo) => void saveRepository(repo)} problem={searchProblem} notice={searchNotice} onNewSearch={() => setView("discover")} onDetail={(repo) => { setDetailParent("results"); openDetail(repo); }} />}
+      {view === "discover" && <DiscoverView onSearch={search} initialQuery={searchDraft.query} initialOptions={searchDraft.options} history={searchHistory} />}
+      {view === "results" && <ResultsView data={data} agentRun={agentRun} compare={compare} saved={savedEntries.map((item) => item.repository)} toggleCompare={toggleCompare} onSave={(repo) => void (savedEntries.some((item) => item.repository === repo.full_name) ? removeSavedRepository(repo.full_name) : saveRepository(repo))} problem={searchProblem} notice={searchNotice} onNewSearch={() => setView("discover")} onDetail={(repo) => { setDetailParent("results"); openDetail(repo); }} />}
       {view === "saved" && <SavedView entries={savedEntries} onOpen={(repo) => { setDetailParent("saved"); openDetail(repo); }} onRemove={(repository) => void removeSavedRepository(repository)} onDiscover={() => setView("discover")} />}
       {view === "detail" && selectedRepo && <DetailView repo={selectedRepo} investigation={investigation} status={investigationStatus} issues={issues} issueStatus={issueStatus} onBack={() => setView(detailParent)} onCompare={() => toggleCompare(selectedRepo.full_name)} onFeedback={submitFeedback} />}
-      {view === "compare" && <CompareView repos={compareRepos} onDiscover={() => setView("results")} onDetail={openDetail} onRemove={toggleCompare} />}
+      {view === "compare" && <CompareView repos={compareRepos} onDiscover={() => setView(data.query ? "results" : "discover")} onDetail={(repo) => { setDetailParent(data.query ? "results" : "saved"); openDetail(repo); }} onRemove={toggleCompare} />}
       {view === "evals" && <EvalsView />}
       {view === "settings" && <SettingsView connection={connection} onApiChanged={() => setApiRevision((current) => current + 1)} />}
     </Shell>
