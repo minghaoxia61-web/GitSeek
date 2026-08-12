@@ -246,11 +246,16 @@ too low for the initial 3,000-repository import.
 
 The production deployment registers a daily refresh at 03:00 UTC. Add a random value of at least
 16 characters as `CRON_SECRET` in the Vercel project. Vercel sends it as a Bearer credential; the
-refresh endpoint rejects missing or incorrect credentials. Each run rotates through two popularity
-bands and refreshes at most 200 repository records to stay inside the function time budget.
+refresh endpoint rejects missing or incorrect credentials. While the index contains fewer than
+3,000 repositories, each run rotates through four popularity bands and advances across result pages
+to grow the index without a manual seed process. Once the target is reached, it switches to two
+popularity bands per run for bounded maintenance refreshes.
 
 `GET /api/v1/index/status` reports fresh, stale (over 7 days), and expired (over 30 days) record
 counts. The web settings screen shows the same state without exposing the refresh credential.
+
+Equivalent searches are reused from PostgreSQL for 15 minutes. Cache hits skip GitHub entirely and
+are identified by `retrieval.cache_hit` and `retrieval.cached_at` in the API response.
 
 ## Tests and lint
 

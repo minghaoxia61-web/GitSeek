@@ -9,6 +9,7 @@ from apps.api.dependencies import get_db_session, get_github_client
 from packages.domain.index import IndexRefreshResponse
 from packages.domain.settings import get_settings
 from packages.github_client import GitHubClient
+from packages.retrieval import RepositoryIndex
 from workers.sync.repositories import RepositorySynchronizer
 
 router = APIRouter(prefix="/api/v1/jobs", tags=["jobs"])
@@ -41,14 +42,18 @@ async def refresh_repository_index(
         raise HTTPException(status_code=401, detail="Invalid refresh credential")
 
     day = datetime.now(UTC).toordinal()
+    indexed_count = RepositoryIndex(session).status().repository_count
+    bootstrap = indexed_count < 3_000
+    query_count = 4 if bootstrap else 2
     selected_queries = [
-        REFRESH_QUERIES[day % len(REFRESH_QUERIES)],
-        REFRESH_QUERIES[(day + 1) % len(REFRESH_QUERIES)],
+        REFRESH_QUERIES[(day + offset) % len(REFRESH_QUERIES)]
+        for offset in range(query_count)
     ]
+    page = 1 + (day // len(REFRESH_QUERIES)) % 5 if bootstrap else 1
     synchronizer = RepositorySynchronizer(session, client)
     fetched = created = updated = 0
     for query in selected_queries:
-        stats = await synchronizer.sync_query(query, pages=1)
+        stats = await synchronizer.sync_query(query, pages=1, start_page=page)
         fetched += stats.fetched
         created += stats.created
         updated += stats.updated

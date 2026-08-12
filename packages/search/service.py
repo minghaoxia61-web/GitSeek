@@ -52,6 +52,15 @@ class SearchService:
             constraints.pushed_after = request.pushed_after
         github_queries = build_github_queries(constraints, search_terms)[: request.live_query_limit]
         github_query = " | ".join(github_queries)
+        if self._persistence is not None:
+            cached = self._persistence.load_cached_search(
+                request.query,
+                constraints,
+                github_query,
+                limit=request.limit,
+            )
+            if cached is not None:
+                return cached
         indexed = (
             self._repository_index.search(request.query, constraints)
             if self._repository_index is not None

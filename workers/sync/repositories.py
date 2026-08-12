@@ -25,12 +25,20 @@ class RepositorySynchronizer:
         self._session = session
         self._client = client
 
-    async def sync_query(self, query: str, *, pages: int = 1) -> SyncStats:
+    async def sync_query(
+        self,
+        query: str,
+        *,
+        pages: int = 1,
+        start_page: int = 1,
+    ) -> SyncStats:
         if pages < 1:
             raise ValueError("pages must be at least 1")
+        if start_page < 1:
+            raise ValueError("start_page must be at least 1")
 
         fetched = created = updated = 0
-        for page_number in range(1, pages + 1):
+        for page_number in range(start_page, start_page + pages):
             page = await self._client.search_repositories(query, page=page_number)
             if not page.result.items:
                 break

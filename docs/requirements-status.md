@@ -31,11 +31,14 @@ complete only when it has an implemented user path and a repeatable verification
   recheck for investigation and Issue data.
 - Authenticated daily Vercel index refresh with rotating popularity bands, stale/expired counts, and
   a visible production index diagnostic.
+- Fifteen-minute database-backed search-result caching with explicit hit metadata and graceful
+  fallback when persistence is unavailable.
 
 ## Partial
 
-- Initial repository index: resumable seed tooling targets 3,000 repositories and daily refresh is
-  available, but the production index size still depends on completing the initial seed.
+- Initial repository index: resumable seed tooling targets 3,000 repositories and the daily job now
+  grows an underfilled index across rotating popularity bands and result pages; production growth
+  still depends on a configured `CRON_SECRET`.
 - Platform and environment constraints: parsed and displayed, but not all repositories provide
   enough structured evidence for strict enforcement.
 - Data freshness: search results include `fetched_at`, seven-day `valid_until`, manual recheck, daily

@@ -43,6 +43,8 @@ export type SearchResponse = {
     github_candidates: number;
     github_status: "live" | "unavailable";
     index_freshest_at: string | null;
+    cache_hit?: boolean;
+    cached_at?: string | null;
   };
 };
 

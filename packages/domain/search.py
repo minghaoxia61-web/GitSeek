@@ -52,6 +52,8 @@ class RetrievalSummary(BaseModel):
     github_candidates: int = 0
     github_status: Literal["live", "unavailable"] = "live"
     index_freshest_at: datetime | None = None
+    cache_hit: bool = False
+    cached_at: datetime | None = None
 
 
 class SearchResponse(BaseModel):

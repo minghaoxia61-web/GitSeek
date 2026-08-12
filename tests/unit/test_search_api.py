@@ -8,6 +8,9 @@ from packages.github_client.schemas import GitHubSearchPage
 
 
 class StubSearchClient:
+    def __init__(self) -> None:
+        self.calls = 0
+
     async def search_repositories(
         self,
         query: str,
@@ -19,7 +22,8 @@ class StubSearchClient:
         order: str = "desc",
     ) -> GitHubSearchPage:
         del page, per_page, etag, sort, order
-        assert query.startswith("FastAPI language:Python archived:false pushed:>")
+        self.calls += 1
+        assert query.startswith("FastAPI language:Python archived:false")
         return GitHubSearchPage.model_validate(
             {
                 "result": {
@@ -82,3 +86,32 @@ def test_search_endpoint_returns_explainable_baseline() -> None:
     assert payload["eligible_candidate_count"] == 1
     assert payload["results"][0]["full_name"] == "example/fastapi-demo"
     assert payload["results"][0]["constraint_match"]["license"] == "MATCH"
+
+
+def test_equivalent_search_uses_recent_database_cache() -> None:
+    github = StubSearchClient()
+
+    async def override_counted_client():
+        yield github
+
+    app.dependency_overrides[get_github_client] = override_counted_client
+    request = {
+        "query": "FastAPI Python MIT learning project updated recently",
+        "limit": 1,
+        "purpose": "learning",
+        "live_query_limit": 1,
+    }
+    try:
+        with TestClient(app) as client:
+            first = client.post("/api/v1/search", json=request)
+            second = client.post("/api/v1/search", json=request)
+    finally:
+        app.dependency_overrides.clear()
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert github.calls == 1
+    assert first.json()["retrieval"]["cache_hit"] is False
+    assert second.json()["retrieval"]["cache_hit"] is True
+    assert second.json()["retrieval"]["cached_at"] is not None
+    assert second.json()["results"] == first.json()["results"]

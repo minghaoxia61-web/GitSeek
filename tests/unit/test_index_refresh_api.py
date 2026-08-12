@@ -24,7 +24,9 @@ def test_scheduled_index_refresh_rejects_missing_configuration(monkeypatch) -> N
 def test_scheduled_index_refresh_requires_secret_and_syncs(monkeypatch) -> None:
     monkeypatch.setenv("CRON_SECRET", "test-secret-at-least-16-characters")
     get_settings.cache_clear()
-    github = StubGitHubClient([_page(stars=42), _page(stars=43)])
+    github = StubGitHubClient(
+        [_page(stars=42), _page(stars=43), _page(stars=44), _page(stars=45)]
+    )
 
     async def override_github_client():
         yield github
@@ -43,7 +45,7 @@ def test_scheduled_index_refresh_requires_secret_and_syncs(monkeypatch) -> None:
     assert unauthorized.status_code == 401
     assert response.status_code == 200
     payload = response.json()
-    assert len(payload["queries"]) == 2
-    assert payload["fetched"] == 2
+    assert len(payload["queries"]) == 4
+    assert payload["fetched"] == 4
     assert payload["created"] == 1
-    assert payload["updated"] == 1
+    assert payload["updated"] == 3

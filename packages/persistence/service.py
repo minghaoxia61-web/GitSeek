@@ -1,5 +1,5 @@
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -19,7 +19,13 @@ from packages.domain.models import (
     SavedRepository,
     SearchSession,
 )
-from packages.domain.search import SearchRequest, SearchResponse
+from packages.domain.search import (
+    Recommendation,
+    RetrievalSummary,
+    SearchConstraints,
+    SearchRequest,
+    SearchResponse,
+)
 from packages.github_client.schemas import GitHubRepository
 
 
@@ -45,6 +51,12 @@ def _repository_values(item: GitHubRepository) -> dict[str, object]:
         "fetched_at": datetime.now(UTC),
         "raw_metadata": item.model_dump(mode="json"),
     }
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=UTC)
 
 
 class ProductPersistence:
@@ -128,6 +140,101 @@ class ProductPersistence:
         except SQLAlchemyError:
             self._session.rollback()
             return False
+
+    def load_cached_search(
+        self,
+        query: str,
+        constraints: SearchConstraints,
+        generated_github_query: str,
+        *,
+        limit: int,
+        max_age: timedelta = timedelta(minutes=15),
+    ) -> SearchResponse | None:
+        """Return a recent equivalent search without contacting GitHub again."""
+        try:
+            normalized_query = " ".join(query.casefold().split())
+            cutoff = datetime.now(UTC) - max_age
+            candidates = list(
+                self._session.scalars(
+                    select(SearchSession)
+                    .where(SearchSession.created_at >= cutoff)
+                    .where(SearchSession.generated_github_query == generated_github_query)
+                    .order_by(SearchSession.created_at.desc())
+                    .limit(20)
+                )
+            )
+            expected_constraints = constraints.model_dump(mode="json")
+            cached_session = next(
+                (
+                    item
+                    for item in candidates
+                    if " ".join(item.query.casefold().split()) == normalized_query
+                    and item.constraints == expected_constraints
+                ),
+                None,
+            )
+            if cached_session is None:
+                return None
+
+            rows = self._session.execute(
+                select(RecommendationRecord, Repository)
+                .join(
+                    Repository,
+                    Repository.full_name == RecommendationRecord.repository_full_name,
+                )
+                .where(RecommendationRecord.session_id == cached_session.id)
+                .order_by(RecommendationRecord.rank)
+                .limit(limit)
+            ).all()
+            if not rows:
+                return None
+            if len(rows) < limit and cached_session.eligible_candidate_count > len(rows):
+                return None
+
+            recommendations = []
+            for recommendation, repository in rows:
+                evidence = recommendation.evidence_json or {}
+                recommendations.append(
+                    Recommendation(
+                        rank=recommendation.rank,
+                        full_name=repository.full_name,
+                        description=repository.description,
+                        html_url=repository.html_url,
+                        score=recommendation.score,
+                        stars=repository.stars,
+                        language=repository.primary_language,
+                        license_spdx=repository.license_spdx,
+                        pushed_at=_as_utc(repository.pushed_at),
+                        constraint_match=evidence.get("constraint_match", {}),
+                        score_breakdown=recommendation.score_json or {},
+                        reasons=evidence.get("reasons", []),
+                        risks=evidence.get("risks", []),
+                        retrieval_sources=evidence.get("retrieval_sources", []),
+                        data_fetched_at=evidence.get("data_fetched_at"),
+                        data_valid_until=evidence.get("data_valid_until"),
+                    )
+                )
+
+            return SearchResponse(
+                session_id=cached_session.id,
+                query=query,
+                generated_github_query=cached_session.generated_github_query,
+                constraints=constraints,
+                source_total_count=cached_session.source_total_count,
+                eligible_candidate_count=cached_session.eligible_candidate_count,
+                ranking_version=cached_session.ranking_version,
+                results=recommendations,
+                retrieval=RetrievalSummary(
+                    local_candidates=0,
+                    github_candidates=0,
+                    github_status="live",
+                    cache_hit=True,
+                    cached_at=_as_utc(cached_session.created_at),
+                ),
+            )
+        except SQLAlchemyError:
+            self._session.rollback()
+            return None
 
     def save_feedback(self, request: FeedbackRequest) -> FeedbackReceipt | None:
         try:
