@@ -21,6 +21,9 @@ repository snapshots, refreshed Issues, feedback, and saved repositories have da
 persistence. The public Sites build uses D1 for the same product activity, while the FastAPI stack
 uses PostgreSQL.
 
+On first connection the API creates any missing application tables with additive SQLAlchemy
+metadata. Alembic remains the source of truth for versioned upgrades and database-specific indexes.
+
 The implementation is a working product slice, not the entire planning document. See
 [`docs/requirements-status.md`](docs/requirements-status.md) for the current complete, partial, and
 pending V1 requirements.
