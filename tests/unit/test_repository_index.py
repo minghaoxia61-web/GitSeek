@@ -74,6 +74,7 @@ def test_index_status_reports_repository_freshness() -> None:
         status = RepositoryIndex(session).status(now=datetime(2026, 8, 11, tzinfo=UTC))
 
     assert status.ready is True
+    assert status.storage_status == "ready"
     assert status.repository_count == 1
     assert status.freshest_at is not None
     assert status.freshness_state == "fresh"

@@ -202,6 +202,7 @@ class RepositoryIndex:
                 oldest_at=None,
                 freshness_state="empty",
                 ready=False,
+                storage_status="unavailable",
             )
 
     @staticmethod

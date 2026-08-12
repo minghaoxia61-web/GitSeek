@@ -14,6 +14,7 @@ class RepositoryIndexStatus(BaseModel):
     freshness_state: Literal["empty", "fresh", "stale", "expired"] = "empty"
     next_refresh_at: datetime | None = None
     ready: bool
+    storage_status: Literal["ready", "unavailable"] = "ready"
 
 
 class IndexRefreshResponse(BaseModel):
