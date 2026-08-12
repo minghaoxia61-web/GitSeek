@@ -33,6 +33,9 @@ class EvaluationSummary(BaseModel):
     dataset_version: str
     sample_count: int
     generated_at: datetime
+    retrieval_dataset_version: str | None = None
+    retrieval_case_count: int = 0
+    relevance_judgment_count: int = 0
     metrics: list[EvaluationMetric]
     categories: list[EvaluationCategory] = Field(default_factory=list)
     failures: list[EvaluationFailure] = Field(default_factory=list)

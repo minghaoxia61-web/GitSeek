@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from packages.domain.models import Base, Repository
 from packages.domain.search import SearchRequest
 from packages.github_client import GitHubRateLimitError
-from packages.retrieval import RepositoryIndex
+from packages.retrieval import RepositoryIndex, parse_search_constraints
 from packages.search import SearchService
 
 
@@ -93,3 +93,23 @@ def test_index_status_marks_all_old_records_expired() -> None:
     assert status.freshness_state == "expired"
     assert status.stale_repository_count == 1
     assert status.expired_repository_count == 1
+
+
+def test_semantic_index_recalls_repository_from_chinese_intent() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        repository = make_repository()
+        repository.name = "workflow-engine"
+        repository.full_name = "example/workflow-engine"
+        repository.description = "Data pipeline orchestration and task scheduler"
+        repository.topics = ["workflow", "scheduler"]
+        session.add(repository)
+        session.commit()
+
+        results = RepositoryIndex(session).semantic_search(
+            "我想找一个数据工作流调度项目",
+            parse_search_constraints("我想找一个数据工作流调度项目"),
+        )
+
+    assert [item.repository.full_name for item in results] == ["example/workflow-engine"]

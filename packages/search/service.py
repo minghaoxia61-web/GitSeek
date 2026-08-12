@@ -13,6 +13,8 @@ from packages.persistence import ProductPersistence
 from packages.ranking import rank_repositories
 from packages.retrieval import RepositoryIndex, build_github_queries, parse_search_constraints
 
+RANKING_VERSION = "hybrid-vector-v2"
+
 
 class SearchService:
     def __init__(
@@ -57,15 +59,19 @@ class SearchService:
                 request.query,
                 constraints,
                 github_query,
+                RANKING_VERSION,
                 limit=request.limit,
             )
             if cached is not None:
                 return cached
-        indexed = (
-            self._repository_index.search(request.query, constraints)
-            if self._repository_index is not None
-            else []
-        )
+        indexed = []
+        if self._repository_index is not None:
+            keyword_indexed = self._repository_index.search(request.query, constraints)
+            semantic_indexed = self._repository_index.semantic_search(request.query, constraints)
+            indexed_by_name = {
+                item.repository.full_name: item for item in [*keyword_indexed, *semantic_indexed]
+            }
+            indexed = list(indexed_by_name.values())
         github_items_by_name = {}
         github_total = 0
         github_status = "live"
@@ -103,6 +109,7 @@ class SearchService:
             list(candidates.values()),
             constraints,
             limit=request.limit,
+            query=request.query,
         )
         for result in results:
             result.retrieval_sources = sorted(sources.get(result.full_name, set()))
@@ -116,7 +123,7 @@ class SearchService:
             constraints=constraints,
             source_total_count=github_total or len(indexed),
             eligible_candidate_count=eligible_count,
-            ranking_version="hybrid-index-baseline-v1",
+            ranking_version=RANKING_VERSION,
             results=results,
             retrieval=RetrievalSummary(
                 local_candidates=len(indexed),

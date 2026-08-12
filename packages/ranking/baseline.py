@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 
 from packages.domain.search import Recommendation, SearchConstraints
 from packages.github_client.schemas import GitHubRepository
+from packages.ranking.semantic import semantic_similarity
 
 
 def _constraint_matches(
@@ -50,6 +51,7 @@ def _score(
     repository: GitHubRepository,
     constraints: SearchConstraints,
     now: datetime,
+    query: str | None = None,
 ) -> tuple[float, dict[str, float]]:
     corpus = " ".join(
         [
@@ -63,6 +65,14 @@ def _score(
         relevance = 35.0 * matched / len(constraints.technologies)
     else:
         relevance = 20.0
+    if query:
+        repository_text = " ".join(
+            [repository.name, repository.description or "", *repository.topics]
+        )
+        relevance = max(
+            relevance,
+            min(35.0, 70.0 * semantic_similarity(query, repository_text)),
+        )
 
     if repository.pushed_at is None:
         activity = 0.0
@@ -99,6 +109,7 @@ def rank_repositories(
     *,
     limit: int,
     now: datetime | None = None,
+    query: str | None = None,
 ) -> tuple[list[Recommendation], int]:
     reference_time = now or datetime.now(UTC)
     scored: list[tuple[GitHubRepository, float, dict[str, float], dict[str, str]]] = []
@@ -107,7 +118,7 @@ def rank_repositories(
         matches = _constraint_matches(repository, constraints)
         if not _is_eligible(matches):
             continue
-        score, breakdown = _score(repository, constraints, reference_time)
+        score, breakdown = _score(repository, constraints, reference_time, query)
         scored.append((repository, score, breakdown, matches))
 
     scored.sort(key=lambda item: (item[1], item[0].stargazers_count), reverse=True)

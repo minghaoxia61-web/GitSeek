@@ -10,6 +10,7 @@ from packages.domain.index import RepositoryIndexStatus
 from packages.domain.models import Repository, RepositorySnapshot
 from packages.domain.search import SearchConstraints
 from packages.github_client.schemas import GitHubRepository
+from packages.ranking.semantic import semantic_similarity
 
 IGNORED_QUERY_TERMS = {
     "github",
@@ -96,6 +97,58 @@ class RepositoryIndex:
         return [
             IndexedRepository(repository=self._to_github(record), fetched_at=record.fetched_at)
             for record in records
+        ]
+
+    def semantic_search(
+        self,
+        query: str,
+        constraints: SearchConstraints,
+        *,
+        limit: int = 100,
+    ) -> list[IndexedRepository]:
+        """Recall repositories by local vector similarity after hard filtering."""
+        statement = select(Repository)
+        if constraints.language != "Any":
+            statement = statement.where(
+                or_(
+                    Repository.primary_language.is_(None),
+                    func.lower(Repository.primary_language) == constraints.language.casefold(),
+                )
+            )
+        if constraints.exclude_archived:
+            statement = statement.where(Repository.archived.is_(False))
+        if constraints.licenses:
+            statement = statement.where(Repository.license_spdx.in_(constraints.licenses))
+        if constraints.pushed_after:
+            statement = statement.where(Repository.pushed_at > constraints.pushed_after)
+        if constraints.project_size == "small":
+            statement = statement.where(Repository.stars < 5_000)
+        elif constraints.project_size == "medium":
+            statement = statement.where(Repository.stars.between(1_000, 30_000))
+        elif constraints.project_size == "large":
+            statement = statement.where(Repository.stars > 10_000)
+        statement = statement.order_by(
+            Repository.pushed_at.desc().nullslast(),
+            Repository.stars.desc(),
+        ).limit(1_000)
+        try:
+            records = list(self._session.scalars(statement))
+        except SQLAlchemyError:
+            self._session.rollback()
+            return []
+
+        scored = []
+        for record in records:
+            corpus = " ".join(
+                [record.name, record.description or "", *(record.topics or [])]
+            )
+            similarity = semantic_similarity(query, corpus)
+            if similarity >= 0.08:
+                scored.append((similarity, record))
+        scored.sort(key=lambda item: (item[0], item[1].stars), reverse=True)
+        return [
+            IndexedRepository(repository=self._to_github(record), fetched_at=record.fetched_at)
+            for _, record in scored[: max(1, min(limit, 300))]
         ]
 
     def status(self, *, now: datetime | None = None) -> RepositoryIndexStatus:

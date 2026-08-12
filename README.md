@@ -15,7 +15,7 @@ The repository currently contains the first end-to-end product slice:
 5. Explore results through a complete repository-intelligence web interface.
 
 The current V1 also includes a bounded Agent workflow, contribution-Issue screening, device-local
-saves, feedback capture, and a deterministic smoke evaluation that reports real parser results
+saves, feedback capture, and deterministic parser and retrieval evaluations that report real results
 instead of placeholder metrics. Agent runs, step traces, search sessions, recommendation evidence,
 repository snapshots, refreshed Issues, feedback, and saved repositories have database-backed
 persistence. The public Sites build uses D1 for the same product activity, while the FastAPI stack
@@ -42,6 +42,10 @@ Open <http://localhost:8000/docs> or request <http://localhost:8000/health>.
 
 The React interface lives in `apps/web` and includes discovery, results, repository detail,
 comparison, and evaluation surfaces.
+
+Search ranking uses a lightweight multilingual vector alongside deterministic metadata scoring.
+The evaluation surface includes 40 parser cases and 100 curated relevance queries with Recall@10,
+nDCG@10, MRR@10, and a keyword-only ablation baseline.
 
 ```powershell
 cd apps/web

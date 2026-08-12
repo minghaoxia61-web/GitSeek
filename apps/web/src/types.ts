@@ -110,6 +110,9 @@ export type EvaluationSummary = {
   version: string;
   dataset_version: string;
   sample_count: number;
+  retrieval_dataset_version?: string | null;
+  retrieval_case_count?: number;
+  relevance_judgment_count?: number;
   generated_at: string;
   metrics: Array<{
     key: string;

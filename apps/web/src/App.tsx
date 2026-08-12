@@ -713,7 +713,7 @@ function emptySearchResponse(query: string, options: SearchOptions, pushedAfter:
     },
     source_total_count: 0,
     eligible_candidate_count: 0,
-    ranking_version: "hybrid-index-baseline-v1",
+    ranking_version: "hybrid-vector-v2",
     results: [],
     retrieval: { local_candidates: 0, github_candidates: 0, github_status: "unavailable", index_freshest_at: null },
   };

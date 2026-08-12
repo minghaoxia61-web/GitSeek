@@ -146,6 +146,7 @@ class ProductPersistence:
         query: str,
         constraints: SearchConstraints,
         generated_github_query: str,
+        ranking_version: str,
         *,
         limit: int,
         max_age: timedelta = timedelta(minutes=15),
@@ -159,6 +160,7 @@ class ProductPersistence:
                     select(SearchSession)
                     .where(SearchSession.created_at >= cutoff)
                     .where(SearchSession.generated_github_query == generated_github_query)
+                    .where(SearchSession.ranking_version == ranking_version)
                     .order_by(SearchSession.created_at.desc())
                     .limit(20)
                 )

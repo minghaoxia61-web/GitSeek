@@ -43,17 +43,18 @@ complete only when it has an implemented user path and a repeatable verification
   enough structured evidence for strict enforcement.
 - Data freshness: search results include `fetched_at`, seven-day `valid_until`, manual recheck, daily
   background refresh, and index diagnostics; external alert delivery is still missing.
-- Retrieval: GitHub Search, PostgreSQL full-text search, and SQLite fallback exist; vector retrieval
-  and embedding-by-commit caching are not implemented.
+- Retrieval: GitHub Search, PostgreSQL full-text search, SQLite fallback, and local multilingual
+  vector recall/reranking exist. The vector encoder is process-cached; durable embedding-by-commit
+  storage and an external embedding model comparison are not yet implemented.
 - Deep investigation: the Agent investigates the top 1-3 repositories rather than the planned top
   20, to keep public-demo latency and GitHub usage bounded.
 - Health score: documentation, engineering, release cadence, PR interaction, and contributor
   distribution signals exist; first maintainer response time still requires timeline-event sampling.
 - Search progress: bounded step summaries are shown after a run; SSE incremental progress is not yet
   implemented.
-- Evaluation: a versioned 40-case constraint suite, category breakdowns, and visible failures are
-  available, but the planned 100-150 human relevance cases, Recall@10, nDCG@10, pairwise accuracy,
-  and second-annotator review are absent.
+- Evaluation: a versioned 40-case constraint suite and 100-case curated relevance suite now report
+  Recall@10, nDCG@10, MRR@10, and keyword-versus-vector lift. Pairwise preference accuracy and a
+  second-annotator review are still absent.
 - Observability: Agent traces and durations are persisted; token cost, cache hit rate, and version trend
   dashboards are not complete.
 - Reliability: model and GitHub degradation are visible; public rate limiting, scheduled stale-Issue
@@ -73,7 +74,7 @@ complete only when it has an implemented user path and a repeatable verification
 
 ## Recommended implementation order
 
-1. Add the 100-150 human relevance dataset and Recall/nDCG scorers alongside the parser suite.
-2. Add vector recall and an ablation comparison against keyword-only retrieval.
+1. Add second-annotator review and pairwise preference accuracy to the relevance suite.
+2. Add durable embedding-by-commit storage and compare an external embedding model.
 3. Add first-response timing from Issue/PR timeline events.
 4. Add SSE progress, public rate limiting, end-to-end tests, and production monitoring.

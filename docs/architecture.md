@@ -56,7 +56,8 @@ Chinese query -> rule-based constraints -> local full-text index + GitHub live s
 Language, license, archive state, and activity date are hard constraints. A candidate with missing
 or conflicting evidence is excluded instead of letting a soft relevance score override the user's
 request. The ranking score uses only fields returned by repository search and labels itself
-`hybrid-index-baseline-v1`; it does not claim that README, tests, or contribution instructions exist.
+`hybrid-vector-v2`; it blends deterministic metadata scoring with a cached local semantic vector and
+does not claim that README, tests, or contribution instructions exist before investigation.
 Each result carries its retrieval sources and fetch time. When GitHub is unavailable or rate-limited,
 the same hard-filter and ranking path can operate on the synchronized index alone.
 
