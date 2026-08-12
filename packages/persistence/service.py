@@ -128,6 +128,7 @@ class ProductPersistence:
                     ranking_version=response.ranking_version,
                 )
             )
+            self._session.flush()
             for result in response.results:
                 self._session.add(
                     RecommendationRecord(
