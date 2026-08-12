@@ -29,6 +29,19 @@ from packages.domain.search import (
 from packages.github_client.schemas import GitHubRepository
 
 
+def _database_error_code(error: SQLAlchemyError) -> str:
+    original = getattr(error, "orig", None)
+    diagnostic = getattr(original, "diag", None)
+    constraint = getattr(diagnostic, "constraint_name", None)
+    sqlstate = getattr(original, "sqlstate", None)
+    details = [type(error).__name__]
+    if constraint:
+        details.append(str(constraint))
+    elif sqlstate:
+        details.append(str(sqlstate))
+    return ":".join(details)
+
+
 def _repository_values(item: GitHubRepository) -> dict[str, object]:
     return {
         "github_id": item.id,
@@ -141,7 +154,7 @@ class ProductPersistence:
             return True
         except SQLAlchemyError as error:
             self._session.rollback()
-            self.last_error = type(error).__name__
+            self.last_error = _database_error_code(error)
             return False
 
     def load_cached_search(
