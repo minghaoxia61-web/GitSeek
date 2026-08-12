@@ -64,6 +64,7 @@ class ProductPersistence:
 
     def __init__(self, session: Session) -> None:
         self._session = session
+        self.last_error: str | None = None
 
     def save_search(
         self,
@@ -71,6 +72,7 @@ class ProductPersistence:
         response: SearchResponse,
         repositories: list[GitHubRepository],
     ) -> bool:
+        self.last_error = None
         try:
             repositories_by_name: dict[str, Repository] = {}
             for item in repositories:
@@ -137,8 +139,9 @@ class ProductPersistence:
                 )
             self._session.commit()
             return True
-        except SQLAlchemyError:
+        except SQLAlchemyError as error:
             self._session.rollback()
+            self.last_error = type(error).__name__
             return False
 
     def load_cached_search(

@@ -136,5 +136,8 @@ class SearchService:
             ),
         )
         if self._persistence is not None:
-            self._persistence.save_search(request, response, github_items)
+            saved = self._persistence.save_search(request, response, github_items)
+            if not saved:
+                response.retrieval.persistence_status = "unavailable"
+                response.retrieval.persistence_error = self._persistence.last_error
         return response

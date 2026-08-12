@@ -54,6 +54,8 @@ class RetrievalSummary(BaseModel):
     index_freshest_at: datetime | None = None
     cache_hit: bool = False
     cached_at: datetime | None = None
+    persistence_status: Literal["ready", "unavailable"] = "ready"
+    persistence_error: str | None = None
 
 
 class SearchResponse(BaseModel):

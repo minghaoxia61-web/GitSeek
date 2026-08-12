@@ -45,6 +45,8 @@ export type SearchResponse = {
     index_freshest_at: string | null;
     cache_hit?: boolean;
     cached_at?: string | null;
+    persistence_status?: "ready" | "unavailable";
+    persistence_error?: string | null;
   };
 };
 
