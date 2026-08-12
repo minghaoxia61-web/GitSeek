@@ -1,3 +1,5 @@
+import type { AgentRunResponse, AgentStep } from "./types";
+
 const API_URL_KEY = "gitseek:api-base-url";
 const configuredApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim().replace(/\/$/, "")
   || (import.meta.env.PROD ? "https://git-seek-swart.vercel.app" : "");
@@ -7,6 +9,8 @@ export type ApiHealth = {
   service: string;
   version?: string;
   environment?: string;
+  embedding_configured?: boolean;
+  embedding_model?: string | null;
 };
 
 export class ApiError extends Error {
@@ -86,4 +90,42 @@ export async function apiFetch<T>(path: string, init?: RequestInit, baseUrl?: st
 
 export async function checkApiHealth(baseUrl = getApiBaseUrl()): Promise<ApiHealth> {
   return apiFetch<ApiHealth>("/health", { headers: { Accept: "application/json" } }, baseUrl);
+}
+
+export async function streamAgentRun(
+  body: unknown,
+  onProgress: (step: AgentStep) => void,
+  signal?: AbortSignal,
+): Promise<AgentRunResponse> {
+  const response = await fetch(apiUrl("/api/v1/agent/runs/stream"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!response.ok) {
+    throw new ApiError(await errorMessage(response), response.status, response.status === 429 ? "rate_limit" : response.status >= 500 ? "server" : "request");
+  }
+  if (!response.body) throw new ApiError("服务没有返回可读取的执行流。", 502, "server");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    buffer += decoder.decode(value, { stream: !done });
+    const blocks = buffer.split(/\r?\n\r?\n/);
+    buffer = blocks.pop() || "";
+    for (const block of blocks) {
+      const event = block.match(/^event:\s*(.+)$/m)?.[1];
+      const data = block.match(/^data:\s*(.+)$/m)?.[1];
+      if (!event || !data) continue;
+      const payload = JSON.parse(data) as AgentStep | AgentRunResponse | { message?: string };
+      if (event === "progress") onProgress(payload as AgentStep);
+      if (event === "result") return payload as AgentRunResponse;
+      if (event === "error") throw new ApiError((payload as { message?: string }).message || "Agent 执行失败", 502, "server");
+    }
+    if (done) break;
+  }
+  throw new ApiError("Agent 执行流提前结束。", 502, "server");
 }

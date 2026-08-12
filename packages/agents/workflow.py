@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from time import perf_counter
 from uuid import uuid4
@@ -11,6 +12,7 @@ from packages.domain.agent import (
 )
 from packages.domain.investigation import RepositoryInvestigation
 from packages.domain.query_plan import QueryInterpretation
+from packages.embeddings import ExternalEmbeddingService
 from packages.github_client import GitHubAPIError, GitHubClient, GitHubRateLimitError
 from packages.investigation import RepositoryInvestigator
 from packages.model_planning import ModelPlanningError, OpenAIQueryPlanner
@@ -85,16 +87,28 @@ class AgentWorkflow:
         persistence: ProductPersistence | None = None,
         repository_index: RepositoryIndex | None = None,
         query_planner: OpenAIQueryPlanner | None = None,
+        embedding_service: ExternalEmbeddingService | None = None,
     ) -> None:
         self._client = client
         self._persistence = persistence
         self._repository_index = repository_index
         self._query_planner = query_planner
+        self._embedding_service = embedding_service
 
-    async def run(self, request: AgentRunRequest) -> AgentRunResponse:
+    async def run(
+        self,
+        request: AgentRunRequest,
+        *,
+        progress: Callable[[AgentStep], Awaitable[None]] | None = None,
+    ) -> AgentRunResponse:
         run_id = str(uuid4())
         created_at = datetime.now(UTC)
         steps: list[AgentStep] = []
+
+        async def record(step: AgentStep) -> None:
+            steps.append(step)
+            if progress is not None:
+                await progress(step)
 
         started_at, started_clock = datetime.now(UTC), perf_counter()
         constraints = parse_search_constraints(request.query)
@@ -136,7 +150,7 @@ class AgentWorkflow:
             constraints.licenses = request.licenses
         if request.pushed_after is not None:
             constraints.pushed_after = request.pushed_after
-        steps.append(
+        await record(
             _step(
                 "parse_query",
                 started_at,
@@ -161,7 +175,7 @@ class AgentWorkflow:
                 else "investigate:on-demand"
             ),
         ]
-        steps.append(
+        await record(
             _step(
                 "plan_search",
                 started_at,
@@ -175,8 +189,9 @@ class AgentWorkflow:
             self._client,
             self._persistence,
             self._repository_index,
+            self._embedding_service,
         ).search(request, constraints=constraints, search_terms=search_terms)
-        steps.append(
+        await record(
             _step(
                 "retrieve_candidates",
                 started_at,
@@ -197,7 +212,7 @@ class AgentWorkflow:
         investigations = [item[0] for item in investigation_results if item[0] is not None]
         max_attempts = max((item[1] for item in investigation_results), default=1)
         failed_count = sum(item[0] is None for item in investigation_results)
-        steps.append(
+        await record(
             _step(
                 "investigate_repositories",
                 started_at,
@@ -224,7 +239,7 @@ class AgentWorkflow:
             for item in selected
         ]
         conflicts = sum(bool(item.conflicts) for item in verification)
-        steps.append(
+        await record(
             _step(
                 "verify_evidence",
                 started_at,

@@ -4,12 +4,13 @@ from packages.domain.models.product import (
     AgentStepRecord,
     ContributionIssueRecord,
     FeedbackRecord,
+    IndexSyncCursor,
     RecommendationRecord,
     RepositorySnapshot,
     SavedRepository,
     SearchSession,
 )
-from packages.domain.models.repository import Repository, RepositoryFeature
+from packages.domain.models.repository import Repository, RepositoryEmbedding, RepositoryFeature
 
 __all__ = [
     "Base",
@@ -17,8 +18,10 @@ __all__ = [
     "AgentStepRecord",
     "ContributionIssueRecord",
     "FeedbackRecord",
+    "IndexSyncCursor",
     "RecommendationRecord",
     "Repository",
+    "RepositoryEmbedding",
     "RepositoryFeature",
     "RepositorySnapshot",
     "SavedRepository",

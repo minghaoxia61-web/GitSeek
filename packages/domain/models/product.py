@@ -32,6 +32,17 @@ class RepositorySnapshot(Base):
     source_sha: Mapped[str | None] = mapped_column(String(255))
 
 
+class IndexSyncCursor(TimestampMixin, Base):
+    __tablename__ = "index_sync_cursors"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    query: Mapped[str] = mapped_column(String(500), unique=True, index=True)
+    next_page: Mapped[int] = mapped_column(Integer, default=1)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failure_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(Text)
+
+
 class SearchSession(Base):
     __tablename__ = "search_sessions"
 

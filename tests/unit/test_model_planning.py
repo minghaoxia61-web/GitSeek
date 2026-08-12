@@ -93,3 +93,45 @@ def test_openai_query_planner_reports_incomplete_response() -> None:
         asyncio.run(run())
 
     assert str(captured.value) == "model response was incomplete: max_output_tokens"
+
+
+def test_openai_query_planner_reuses_recent_parse() -> None:
+    calls = 0
+
+    async def handler(_: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        result = {
+            "summary": "Find a small FastAPI project",
+            "language": "Python",
+            "technologies": ["FastAPI"],
+            "github_terms": ["fastapi"],
+            "licenses": ["MIT"],
+            "purpose": "learning",
+            "exclude_archived": True,
+            "pushed_after": None,
+            "weekly_hours": None,
+            "platform": None,
+            "project_size": "small",
+        }
+        return httpx.Response(
+            200,
+            json={
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": json.dumps(result)}],
+                    }
+                ]
+            },
+        )
+
+    async def run() -> None:
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+            planner = OpenAIQueryPlanner("test-key", model="cache-test-model", client=client)
+            first = await planner.plan("Unique cache test query")
+            second = await planner.plan("  unique   CACHE test QUERY ")
+            assert first == second
+
+    asyncio.run(run())
+    assert calls == 1

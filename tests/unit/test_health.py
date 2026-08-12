@@ -13,4 +13,6 @@ def test_health_endpoint() -> None:
         "service": "gitseek-api",
         "version": "0.1.0",
         "environment": "local",
+        "embedding_configured": False,
+        "embedding_model": None,
     }

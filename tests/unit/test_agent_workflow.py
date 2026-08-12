@@ -209,3 +209,21 @@ def test_agent_can_return_without_blocking_on_deep_investigation() -> None:
         step for step in response.steps if step.node == "investigate_repositories"
     )
     assert "打开项目档案" in investigation_step.summary
+
+
+def test_agent_emits_each_completed_step_in_order() -> None:
+    emitted = []
+
+    async def run():
+        async def progress(step):
+            emitted.append(step.node)
+
+        return await AgentWorkflow(
+            SearchOnlyAgentClient(), query_planner=StubQueryPlanner()
+        ).run(
+            AgentRunRequest(query="FastAPI beginner project", investigate_limit=0),
+            progress=progress,
+        )
+
+    response = asyncio.run(run())
+    assert emitted == [step.node for step in response.steps]

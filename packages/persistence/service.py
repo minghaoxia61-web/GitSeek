@@ -249,6 +249,11 @@ class ProductPersistence:
                     github_status="live",
                     cache_hit=True,
                     cached_at=_as_utc(cached_session.created_at),
+                    embedding_status=(
+                        "external"
+                        if cached_session.ranking_version == "hybrid-external-vector-v3"
+                        else "local"
+                    ),
                 ),
             )
         except SQLAlchemyError:

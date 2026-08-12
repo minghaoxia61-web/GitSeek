@@ -109,7 +109,19 @@ GITHUB_TOKEN=<GitHub token>
 OPENAI_API_KEY=<DeepSeek API key>
 OPENSCOUT_OPENAI_MODEL=deepseek-v4-flash
 OPENSCOUT_OPENAI_API_URL=https://api.deepseek.com
+EMBEDDING_API_KEY=<OpenAI-compatible embeddings API key>
+OPENSCOUT_EMBEDDING_MODEL=text-embedding-3-small
+OPENSCOUT_EMBEDDING_API_URL=https://api.openai.com/v1
+OPENSCOUT_PUBLIC_RATE_LIMIT_PER_MINUTE=120
+OPENSCOUT_AGENT_RATE_LIMIT_PER_MINUTE=30
 ```
+
+The planner and embedding provider are intentionally configured independently. DeepSeek V4 Flash
+can continue to interpret natural-language requests, while an OpenAI-compatible embeddings endpoint
+provides semantic vectors. If the embedding provider is missing or temporarily unavailable, GitSeek
+falls back to the local multilingual vector ranker and reports that fallback in the response and UI.
+Repository vectors are persisted by model and content hash, so unchanged repositories are not sent
+to the provider again.
 
 Run migrations once against the cloud database before using persistence-backed endpoints:
 
@@ -148,6 +160,22 @@ the page without blocking it. GitHub term queries are issued concurrently with b
 repository investigation runs only after the user opens a project dossier.
 
 Index readiness and freshness are available through `GET /api/v1/index/status`.
+Lightweight process metrics are available through `GET /api/v1/metrics`; responses also include
+`X-Request-ID` and `Server-Timing`. Public search and Agent endpoints use configurable per-IP,
+per-process minute limits and return standard `Retry-After` metadata when saturated.
+External embedding quality can be measured on the versioned relevance set with
+`POST /api/v1/evals/embeddings`; the endpoint reports Recall@10, nDCG@10, MRR@10, and lift over the
+local-vector baseline. This evaluation makes provider requests and is therefore never run
+automatically during normal searches or deployment.
+
+For the browser regression suite, install Playwright Chromium once and run both desktop and mobile
+search/navigation checks:
+
+```powershell
+cd apps/web
+pnpm exec playwright install chromium
+pnpm run test:e2e
+```
 
 ## Bounded Agent workflow
 

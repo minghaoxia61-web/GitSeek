@@ -22,4 +22,6 @@ class IndexRefreshResponse(BaseModel):
     fetched: int
     created: int
     updated: int
+    snapshots_created: int = 0
+    failed_queries: list[str] = []
     completed_at: datetime

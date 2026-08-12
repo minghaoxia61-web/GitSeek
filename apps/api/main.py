@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from apps.api.observability import PublicRateLimitMiddleware, RequestObservabilityMiddleware
 from apps.api.routes.agents import router as agents_router
 from apps.api.routes.evaluations import router as evaluations_router
 from apps.api.routes.feedback import router as feedback_router
@@ -36,6 +37,12 @@ def create_app() -> FastAPI:
         allow_credentials=False,
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type"],
+    )
+    application.add_middleware(RequestObservabilityMiddleware)
+    application.add_middleware(
+        PublicRateLimitMiddleware,
+        search_limit=settings.public_rate_limit_per_minute,
+        agent_limit=settings.agent_rate_limit_per_minute,
     )
     application.include_router(health_router)
     application.include_router(jobs_router)

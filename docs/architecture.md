@@ -61,6 +61,13 @@ does not claim that README, tests, or contribution instructions exist before inv
 Each result carries its retrieval sources and fetch time. When GitHub is unavailable or rate-limited,
 the same hard-filter and ranking path can operate on the synchronized index alone.
 
+Agent searches may request an external semantic ranker. Query and repository text are embedded in
+batches through an OpenAI-compatible embeddings endpoint, then blended with the same deterministic
+metadata score. Repository vectors are stored by model and content hash; only new or changed content
+is embedded again. Provider errors never bypass hard filters: the request falls back to
+`hybrid-vector-v2`, while successful external ranking is identified as `hybrid-external-vector-v3`.
+The language model planner and embedding provider use separate credentials and endpoints.
+
 ## On-demand repository investigation
 
 Repository detail requests use a bounded, read-only evidence workflow:

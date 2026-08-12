@@ -18,6 +18,7 @@ class SyncStats:
     fetched: int = 0
     created: int = 0
     updated: int = 0
+    snapshots_created: int = 0
 
 
 class RepositorySynchronizer:
@@ -37,7 +38,7 @@ class RepositorySynchronizer:
         if start_page < 1:
             raise ValueError("start_page must be at least 1")
 
-        fetched = created = updated = 0
+        fetched = created = updated = snapshots_created = 0
         for page_number in range(start_page, start_page + pages):
             page = await self._client.search_repositories(query, page=page_number)
             if not page.result.items:
@@ -59,21 +60,35 @@ class RepositorySynchronizer:
                 )
             }
             for item in page.result.items:
-                self._session.add(
-                    RepositorySnapshot(
-                        repo_id=records[item.id].id,
-                        metrics_json={
-                            "stars": item.stargazers_count,
-                            "forks": item.forks_count,
-                            "open_issues": item.open_issues_count,
-                            "archived": item.archived,
-                            "pushed_at": item.pushed_at.isoformat() if item.pushed_at else None,
-                        },
-                    )
+                metrics = {
+                    "stars": item.stargazers_count,
+                    "forks": item.forks_count,
+                    "open_issues": item.open_issues_count,
+                    "archived": item.archived,
+                    "pushed_at": item.pushed_at.isoformat() if item.pushed_at else None,
+                }
+                latest_metrics = self._session.scalar(
+                    select(RepositorySnapshot.metrics_json)
+                    .where(RepositorySnapshot.repo_id == records[item.id].id)
+                    .order_by(RepositorySnapshot.fetched_at.desc())
+                    .limit(1)
                 )
+                if latest_metrics != metrics:
+                    self._session.add(
+                        RepositorySnapshot(
+                            repo_id=records[item.id].id,
+                            metrics_json=metrics,
+                        )
+                    )
+                    snapshots_created += 1
 
         self._session.commit()
-        return SyncStats(fetched=fetched, created=created, updated=updated)
+        return SyncStats(
+            fetched=fetched,
+            created=created,
+            updated=updated,
+            snapshots_created=snapshots_created,
+        )
 
     def _upsert(self, item: GitHubRepository, *, source_etag: str | None) -> bool:
         repository = self._session.scalar(

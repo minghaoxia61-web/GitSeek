@@ -47,6 +47,10 @@ export type SearchResponse = {
     cached_at?: string | null;
     persistence_status?: "ready" | "unavailable";
     persistence_error?: string | null;
+    embedding_status?: "local" | "external" | "unavailable";
+    embedding_model?: string | null;
+    embedding_cached_repositories?: number;
+    embedding_generated_repositories?: number;
   };
 };
 

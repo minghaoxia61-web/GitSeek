@@ -52,6 +52,7 @@ def _score(
     constraints: SearchConstraints,
     now: datetime,
     query: str | None = None,
+    external_similarity: float | None = None,
 ) -> tuple[float, dict[str, float]]:
     corpus = " ".join(
         [
@@ -73,6 +74,9 @@ def _score(
             relevance,
             min(35.0, 70.0 * semantic_similarity(query, repository_text)),
         )
+    if external_similarity is not None:
+        normalized_similarity = max(0.0, min(1.0, (external_similarity - 0.15) / 0.65))
+        relevance = max(relevance, 35.0 * normalized_similarity)
 
     if repository.pushed_at is None:
         activity = 0.0
@@ -110,6 +114,7 @@ def rank_repositories(
     limit: int,
     now: datetime | None = None,
     query: str | None = None,
+    semantic_scores: dict[str, float] | None = None,
 ) -> tuple[list[Recommendation], int]:
     reference_time = now or datetime.now(UTC)
     scored: list[tuple[GitHubRepository, float, dict[str, float], dict[str, str]]] = []
@@ -118,7 +123,13 @@ def rank_repositories(
         matches = _constraint_matches(repository, constraints)
         if not _is_eligible(matches):
             continue
-        score, breakdown = _score(repository, constraints, reference_time, query)
+        score, breakdown = _score(
+            repository,
+            constraints,
+            reference_time,
+            query,
+            (semantic_scores or {}).get(repository.full_name),
+        )
         scored.append((repository, score, breakdown, matches))
 
     scored.sort(key=lambda item: (item[1], item[0].stargazers_count), reverse=True)

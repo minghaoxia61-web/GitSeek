@@ -3,9 +3,10 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from apps.api.dependencies import get_db_session, get_github_client
+from apps.api.dependencies import get_db_session, get_embedding_client, get_github_client
 from packages.domain.index import RepositoryIndexStatus
 from packages.domain.search import SearchRequest, SearchResponse
+from packages.embeddings import ExternalEmbeddingService, OpenAIEmbeddingClient
 from packages.github_client import GitHubClient
 from packages.persistence import ProductPersistence
 from packages.retrieval import RepositoryIndex
@@ -26,9 +27,18 @@ async def search_repositories(
     request: SearchRequest,
     client: Annotated[GitHubClient, Depends(get_github_client)],
     session: Annotated[Session, Depends(get_db_session)],
+    embedding_client: Annotated[
+        OpenAIEmbeddingClient | None,
+        Depends(get_embedding_client),
+    ],
 ) -> SearchResponse:
     return await SearchService(
         client,
         ProductPersistence(session),
         RepositoryIndex(session),
+        (
+            ExternalEmbeddingService(session, embedding_client)
+            if embedding_client is not None
+            else None
+        ),
     ).search(request)

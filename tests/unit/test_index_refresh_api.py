@@ -49,3 +49,6 @@ def test_scheduled_index_refresh_requires_secret_and_syncs(monkeypatch) -> None:
     assert payload["fetched"] == 4
     assert payload["created"] == 1
     assert payload["updated"] == 3
+    assert payload["snapshots_created"] == 4
+    assert payload["failed_queries"] == []
+    assert [page for _, page in github.calls] == [1, 1, 1, 1]

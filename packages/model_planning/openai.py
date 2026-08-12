@@ -1,11 +1,16 @@
 import json
 import re
-from datetime import date
+from collections import OrderedDict
+from datetime import UTC, date, datetime, timedelta
 
 import httpx
 from pydantic import ValidationError
 
 from packages.domain.query_plan import ModelQueryPlan
+
+_PLAN_CACHE: OrderedDict[tuple[str, str, str], tuple[datetime, ModelQueryPlan]] = OrderedDict()
+_PLAN_CACHE_TTL = timedelta(minutes=15)
+_PLAN_CACHE_LIMIT = 256
 
 QUERY_PLAN_SCHEMA = {
     "type": "object",
@@ -121,6 +126,12 @@ class OpenAIQueryPlanner:
         self._client = client
 
     async def plan(self, query: str, *, today: date | None = None) -> ModelQueryPlan:
+        reference_date = today or date.today()
+        cache_key = (self.model, reference_date.isoformat(), " ".join(query.casefold().split()))
+        cached = _PLAN_CACHE.get(cache_key)
+        if cached is not None and datetime.now(UTC) - cached[0] < _PLAN_CACHE_TTL:
+            _PLAN_CACHE.move_to_end(cache_key)
+            return cached[1].model_copy(deep=True)
         payload = {
             "model": self.model,
             "input": [
@@ -128,7 +139,7 @@ class OpenAIQueryPlanner:
                 {
                     "role": "user",
                     "content": (
-                        f"Current date: {(today or date.today()).isoformat()}\n"
+                        f"Current date: {reference_date.isoformat()}\n"
                         f"Request: {query}"
                     ),
                 },
@@ -160,6 +171,10 @@ class OpenAIQueryPlanner:
             plan.technologies = [term for item in plan.technologies if (term := _clean_term(item))]
             plan.github_terms = [term for item in plan.github_terms if (term := _clean_term(item))]
             plan.licenses = [term for item in plan.licenses if (term := _clean_term(item))]
+            _PLAN_CACHE[cache_key] = (datetime.now(UTC), plan.model_copy(deep=True))
+            _PLAN_CACHE.move_to_end(cache_key)
+            while len(_PLAN_CACHE) > _PLAN_CACHE_LIMIT:
+                _PLAN_CACHE.popitem(last=False)
             return plan
         except httpx.HTTPStatusError as exc:
             detail = _http_error_detail(exc.response)

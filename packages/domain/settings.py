@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = Field(default=None, validation_alias="OPENAI_API_KEY")
     openai_model: str = "gpt-5.6-luna"
     openai_api_url: str = "https://api.openai.com/v1"
+    embedding_api_key: SecretStr | None = Field(
+        default=None,
+        validation_alias=AliasChoices("EMBEDDING_API_KEY", "OPENSCOUT_EMBEDDING_API_KEY"),
+    )
+    embedding_model: str | None = None
+    embedding_api_url: str = "https://api.openai.com/v1"
+    public_rate_limit_per_minute: int = 120
+    agent_rate_limit_per_minute: int = 30
 
     @field_validator("database_url", mode="before")
     @classmethod

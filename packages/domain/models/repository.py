@@ -61,3 +61,17 @@ class RepositoryFeature(TimestampMixin, Base):
     feature_version: Mapped[str] = mapped_column(String(50), default="v1")
 
     repository: Mapped[Repository] = relationship(back_populates="features")
+
+
+class RepositoryEmbedding(TimestampMixin, Base):
+    __tablename__ = "repository_embeddings"
+
+    repo_id: Mapped[int] = mapped_column(
+        BIGINT_PK,
+        ForeignKey("repositories.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    model: Mapped[str] = mapped_column(String(160), index=True)
+    content_hash: Mapped[str] = mapped_column(String(64), index=True)
+    dimensions: Mapped[int] = mapped_column(Integer)
+    vector_json: Mapped[list[float]] = mapped_column(JSON)

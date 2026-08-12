@@ -8,13 +8,15 @@
     "build": "tsc --noEmit && vite build && node scripts/prepare-sites.mjs",
     "build:desktop": "tsc --noEmit && vite build --mode desktop",
     "preview": "vite preview --host 127.0.0.1",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
   "devDependencies": {
+    "@playwright/test": "1.55.0",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",

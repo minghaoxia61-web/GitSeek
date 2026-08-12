@@ -1,8 +1,8 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
-import { ApiError, apiFetch, checkApiHealth, getApiBaseUrl, getDefaultApiBaseUrl, resetApiBaseUrl, setApiBaseUrl } from "./api";
+import { ApiError, apiFetch, checkApiHealth, getApiBaseUrl, getDefaultApiBaseUrl, resetApiBaseUrl, setApiBaseUrl, streamAgentRun } from "./api";
 import { APP_VERSION, checkForUpdates, RELEASES_URL, type ReleaseCheck } from "./appInfo";
-import type { AgentRunResponse, ContributionIssue, EvaluationSummary, Recommendation, RepositoryInvestigation, SearchResponse, View } from "./types";
+import type { AgentRunResponse, AgentStep, ContributionIssue, EvaluationSummary, Recommendation, RepositoryInvestigation, SearchResponse, View } from "./types";
 
 type SearchOptions = {
   purpose: "learning" | "contribution";
@@ -17,6 +17,8 @@ type ConnectionStatus = {
   state: "checking" | "online" | "offline";
   label: string;
   detail: string;
+  embeddingConfigured?: boolean;
+  embeddingModel?: string | null;
 };
 
 type SearchProblem = {
@@ -390,6 +392,7 @@ function ResultCard({
 function ResultsView({
   data,
   agentRun,
+  agentProgress,
   compare,
   saved,
   toggleCompare,
@@ -398,9 +401,11 @@ function ResultsView({
   onNewSearch,
   problem,
   notice,
+  onCancelAgent,
 }: {
   data: SearchResponse;
   agentRun: AgentRunResponse | null;
+  agentProgress: AgentStep[];
   compare: string[];
   saved: string[];
   toggleCompare: (name: string) => void;
@@ -409,6 +414,7 @@ function ResultsView({
   onNewSearch: () => void;
   problem: SearchProblem | null;
   notice: string | null;
+  onCancelAgent: () => void;
 }) {
   const [sortBy, setSortBy] = useState<"match" | "activity" | "approachable">("match");
   const sortedResults = useMemo(() => [...data.results].sort((left, right) => {
@@ -430,7 +436,9 @@ function ResultsView({
 
       {problem && <section className={`result-state result-state--${problem.kind}`}><Signal tone={problem.kind === "rate_limit" ? "amber" : "red"} /><div><small>{problem.kind === "rate_limit" ? "REQUEST LIMITED" : "SERVICE UNAVAILABLE"}</small><h2>{problem.title}</h2><p>{problem.message}</p><button className="primary-button" onClick={onNewSearch}>返回修改查询</button></div></section>}
       {notice && !problem && <div className="notice"><Signal tone="amber" /><span>{notice}</span></div>}
+      {!problem && !agentRun && agentProgress.length > 0 && <div className="notice"><Signal /><span>{agentProgress.at(-1)?.summary}</span><button className="text-button" onClick={onCancelAgent}>停止后台优化</button></div>}
       {!problem && data.retrieval?.github_status === "unavailable" && <div className="notice"><Signal tone="amber" /><span>GitHub 当前限流或暂不可用，本次结果来自已同步索引，页面已保留数据时间。</span></div>}
+      {!problem && data.retrieval?.embedding_status === "unavailable" && <div className="notice"><Signal tone="amber" /><span>外部语义模型暂不可用，本次已自动改用本地向量排序。</span></div>}
 
       {!problem && <section className="query-record">
         <div><small>你的需求</small><p>{data.query}</p></div>
@@ -442,7 +450,7 @@ function ResultsView({
           {data.constraints.pushed_after && <span>{data.constraints.pushed_after} 后更新</span>}
           {data.constraints.platform && <span>{data.constraints.platform}</span>}
         </div>
-        {agentRun && <details className="search-trace"><summary>查看搜索过程</summary><p>{agentRun.interpretation.summary}</p>{agentRun.steps.map((step) => <span key={step.node}><Signal tone={step.status === "completed" ? "green" : "amber"} />{step.summary}<small>{step.duration_ms}ms</small></span>)}</details>}
+        {agentRun && <details className="search-trace"><summary>查看搜索过程</summary><p>{agentRun.interpretation.summary}</p><p>语义排序：{data.retrieval?.embedding_status === "external" ? data.retrieval.embedding_model || "外部向量模型" : "本地向量模型"}</p>{agentRun.steps.map((step) => <span key={step.node}><Signal tone={step.status === "completed" ? "green" : "amber"} />{step.summary}<small>{step.duration_ms}ms</small></span>)}</details>}
       </section>}
 
       {!problem && data.results.length === 0 && <section className="result-state result-state--empty"><span className="empty-mark">0</span><div><small>NO MATCHES</small><h2>这次没有项目通过全部条件</h2><p>GitHub 已完成检索，但语言、许可证、更新时间或规模条件组合后没有留下候选。可以先去掉一到两个硬条件再试。</p><button className="primary-button" onClick={onNewSearch}>放宽搜索条件</button></div></section>}
@@ -820,11 +828,13 @@ export default function App() {
   const [searchHistory, setSearchHistory] = useState<SearchHistoryEntry[]>(readSearchHistory);
   const [searchDraft, setSearchDraft] = useState<{ query: string; options: SearchOptions }>({ query: "", options: DEFAULT_SEARCH_OPTIONS });
   const [agentRun, setAgentRun] = useState<AgentRunResponse | null>(null);
+  const [agentProgress, setAgentProgress] = useState<AgentStep[]>([]);
   const [searchProblem, setSearchProblem] = useState<SearchProblem | null>(null);
   const [searchNotice, setSearchNotice] = useState<string | null>(null);
   const [apiRevision, setApiRevision] = useState(0);
   const [connection, setConnection] = useState<ConnectionStatus>({ state: "checking", label: "正在连接", detail: "正在检测云端服务" });
   const searchSequence = useRef(0);
+  const agentController = useRef<AbortController | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -834,7 +844,7 @@ export default function App() {
       try {
         const health = await checkApiHealth();
         if (!active) return;
-        setConnection({ state: "online", label: "服务已连接", detail: `${health.service} · ${Math.round(performance.now() - started)}ms` });
+        setConnection({ state: "online", label: "服务已连接", detail: `${health.service} · ${Math.round(performance.now() - started)}ms`, embeddingConfigured: health.embedding_configured, embeddingModel: health.embedding_model });
       } catch (error) {
         if (!active) return;
         setConnection({ state: "offline", label: "服务未连接", detail: error instanceof Error ? error.message : "连接检测失败" });
@@ -844,6 +854,10 @@ export default function App() {
     const timer = window.setInterval(() => void refreshConnection(), 60_000);
     return () => { active = false; window.clearInterval(timer); };
   }, [apiRevision]);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [view]);
 
   useEffect(() => {
     let active = true;
@@ -876,6 +890,9 @@ export default function App() {
   }
 
   async function search(query: string, options: SearchOptions) {
+    agentController.current?.abort();
+    const controller = new AbortController();
+    agentController.current = controller;
     const sequence = searchSequence.current + 1;
     searchSequence.current = sequence;
     const recentDate = new Date();
@@ -890,21 +907,27 @@ export default function App() {
       licenses: options.licenses.length ? options.licenses : null,
       pushed_after: options.recentOnly ? recentDate.toISOString().slice(0, 10) : null,
       live_query_limit: 1,
+      embedding_mode: "local",
     };
     const pushedAfter = options.recentOnly ? recentDate.toISOString().slice(0, 10) : null;
     setSearchDraft({ query, options });
     setSearchProblem(null);
     setSearchNotice(null);
+    setAgentProgress([]);
     const basePromise = apiFetch<SearchResponse>("/api/v1/search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
     });
-    const agentPromise = apiFetch<AgentRunResponse>("/api/v1/agent/runs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...requestBody, live_query_limit: 3, investigate_limit: 0 }),
-    });
+    const agentPromise = streamAgentRun(
+      { ...requestBody, live_query_limit: 3, embedding_mode: "external", investigate_limit: 0 },
+      (step) => {
+        if (sequence !== searchSequence.current) return;
+        setSearchNotice(null);
+        setAgentProgress((current) => [...current, step]);
+      },
+      controller.signal,
+    );
     const baseAttempt: Promise<SearchAttempt> = basePromise.then(
       (response) => ({ kind: "base", response }),
       (error) => ({ kind: "base-error", error }),
@@ -921,6 +944,7 @@ export default function App() {
 
     if (first.kind === "agent") {
       setAgentRun(first.run);
+      setAgentProgress([]);
       setData(first.run.search);
       rememberSearch(query, options, first.run.search.results.length);
       setView("results");
@@ -935,11 +959,18 @@ export default function App() {
       void agentPromise.then((run) => {
         if (sequence !== searchSequence.current) return;
         setAgentRun(run);
+        setAgentProgress([]);
         setData(run.search);
         setSearchNotice(null);
       }).catch((error) => {
         if (sequence !== searchSequence.current) return;
+        if (error instanceof DOMException && error.name === "AbortError") {
+          setAgentProgress([]);
+          setSearchNotice("已停止后台语义优化，当前快速结果仍可继续使用。");
+          return;
+        }
         const problem = problemFrom(error);
+        setAgentProgress([]);
         setSearchNotice(problem.kind === "rate_limit" ? "快速结果已显示；智能解析当前达到限额。" : "快速结果已显示；智能解析暂时不可用。");
       });
       return;
@@ -1046,7 +1077,7 @@ export default function App() {
   return (
     <Shell view={view} setView={setView} compareCount={compare.length} savedCount={savedEntries.length} hasResults={Boolean(data.query)} detailParent={detailParent} connection={connection}>
       {view === "discover" && <DiscoverView onSearch={search} initialQuery={searchDraft.query} initialOptions={searchDraft.options} history={searchHistory} />}
-      {view === "results" && <ResultsView data={data} agentRun={agentRun} compare={compare} saved={savedEntries.map((item) => item.repository)} toggleCompare={toggleCompare} onSave={(repo) => void (savedEntries.some((item) => item.repository === repo.full_name) ? removeSavedRepository(repo.full_name) : saveRepository(repo))} problem={searchProblem} notice={searchNotice} onNewSearch={() => setView("discover")} onDetail={(repo) => { setDetailParent("results"); openDetail(repo); }} />}
+      {view === "results" && <ResultsView data={data} agentRun={agentRun} agentProgress={agentProgress} compare={compare} saved={savedEntries.map((item) => item.repository)} toggleCompare={toggleCompare} onSave={(repo) => void (savedEntries.some((item) => item.repository === repo.full_name) ? removeSavedRepository(repo.full_name) : saveRepository(repo))} problem={searchProblem} notice={searchNotice} onCancelAgent={() => agentController.current?.abort()} onNewSearch={() => setView("discover")} onDetail={(repo) => { setDetailParent("results"); openDetail(repo); }} />}
       {view === "saved" && <SavedView entries={savedEntries} onOpen={(repo) => { setDetailParent("saved"); openDetail(repo); }} onRemove={(repository) => void removeSavedRepository(repository)} onDiscover={() => setView("discover")} />}
       {view === "detail" && selectedRepo && <DetailView repo={selectedRepo} investigation={investigation} status={investigationStatus} issues={issues} issueStatus={issueStatus} onBack={() => setView(detailParent)} onCompare={() => toggleCompare(selectedRepo.full_name)} onRefresh={() => refreshDetail(selectedRepo)} onFeedback={submitFeedback} />}
       {view === "compare" && <CompareView repos={compareRepos} onDiscover={() => setView(data.query ? "results" : "discover")} onDetail={(repo) => { setDetailParent(data.query ? "results" : "saved"); openDetail(repo); }} onRemove={toggleCompare} />}

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from packages.database.session import get_session_factory
 from packages.domain.settings import get_settings
+from packages.embeddings import OpenAIEmbeddingClient
 from packages.github_client import GitHubClient
 from packages.model_planning import OpenAIQueryPlanner
 
@@ -32,3 +33,16 @@ def get_query_planner() -> OpenAIQueryPlanner | None:
         model=settings.openai_model,
         base_url=settings.openai_api_url,
     )
+
+
+async def get_embedding_client() -> AsyncIterator[OpenAIEmbeddingClient | None]:
+    settings = get_settings()
+    if settings.embedding_api_key is None or not settings.embedding_model:
+        yield None
+        return
+    async with OpenAIEmbeddingClient(
+        settings.embedding_api_key,
+        model=settings.embedding_model,
+        base_url=settings.embedding_api_url,
+    ) as client:
+        yield client

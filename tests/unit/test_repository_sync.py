@@ -1,9 +1,9 @@
 import asyncio
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
-from packages.domain.models import Base, Repository
+from packages.domain.models import Base, Repository, RepositorySnapshot
 from packages.github_client.schemas import GitHubSearchPage
 from workers.sync.repositories import RepositorySynchronizer
 
@@ -45,6 +45,7 @@ def _page(*, stars: int) -> GitHubSearchPage:
 class StubGitHubClient:
     def __init__(self, pages: list[GitHubSearchPage]) -> None:
         self._pages = iter(pages)
+        self.calls: list[tuple[str, int]] = []
 
     async def search_repositories(
         self,
@@ -54,7 +55,8 @@ class StubGitHubClient:
         per_page: int = 100,
         etag: str | None = None,
     ) -> GitHubSearchPage:
-        del query, page, per_page, etag
+        del per_page, etag
+        self.calls.append((query, page))
         return next(self._pages)
 
 
@@ -79,3 +81,18 @@ def test_sync_creates_then_updates_without_duplicates() -> None:
     assert repositories[0].stars == 99
     assert repositories[0].source_etag == '"seed-page"'
 
+
+def test_sync_skips_duplicate_metric_snapshots() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        first_sync = RepositorySynchronizer(session, StubGitHubClient([_page(stars=42)]))
+        first_stats = asyncio.run(first_sync.sync_query("language:Python"))
+        second_sync = RepositorySynchronizer(session, StubGitHubClient([_page(stars=42)]))
+        second_stats = asyncio.run(second_sync.sync_query("language:Python"))
+        snapshot_count = session.scalar(select(func.count(RepositorySnapshot.id)))
+
+    assert first_stats.snapshots_created == 1
+    assert second_stats.snapshots_created == 0
+    assert snapshot_count == 1

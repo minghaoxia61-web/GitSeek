@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -39,3 +40,11 @@ class EvaluationSummary(BaseModel):
     metrics: list[EvaluationMetric]
     categories: list[EvaluationCategory] = Field(default_factory=list)
     failures: list[EvaluationFailure] = Field(default_factory=list)
+
+
+class EmbeddingEvaluationSummary(BaseModel):
+    configured: bool
+    status: Literal["completed", "unavailable", "failed"]
+    model: str | None = None
+    sample_count: int = 0
+    metrics: list[EvaluationMetric] = Field(default_factory=list)

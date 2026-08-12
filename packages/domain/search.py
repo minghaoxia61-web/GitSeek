@@ -14,6 +14,7 @@ class SearchRequest(BaseModel):
     licenses: list[str] | None = None
     pushed_after: date | None = None
     live_query_limit: int = Field(default=3, ge=1, le=3)
+    embedding_mode: Literal["local", "external"] = "local"
 
 
 class SearchConstraints(BaseModel):
@@ -56,6 +57,10 @@ class RetrievalSummary(BaseModel):
     cached_at: datetime | None = None
     persistence_status: Literal["ready", "unavailable"] = "ready"
     persistence_error: str | None = None
+    embedding_status: Literal["local", "external", "unavailable"] = "local"
+    embedding_model: str | None = None
+    embedding_cached_repositories: int = 0
+    embedding_generated_repositories: int = 0
 
 
 class SearchResponse(BaseModel):

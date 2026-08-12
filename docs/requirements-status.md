@@ -33,6 +33,12 @@ complete only when it has an implemented user path and a repeatable verification
   a visible production index diagnostic.
 - Fifteen-minute database-backed search-result caching with explicit hit metadata and graceful
   fallback when persistence is unavailable.
+- Optional OpenAI-compatible external embeddings, durable model-and-content-hash vector caching,
+  explicit local fallback, and a repeatable external-versus-local retrieval evaluation endpoint.
+- Persisted per-query synchronization cursors, failed-shard recovery, and duplicate snapshot
+  suppression for the production repository index.
+- Streaming Agent progress with client cancellation, recent query-plan caching, configurable public
+  request limits, request IDs, timing/health metrics, and desktop/mobile Playwright smoke tests.
 
 ## Partial
 
@@ -43,22 +49,22 @@ complete only when it has an implemented user path and a repeatable verification
   enough structured evidence for strict enforcement.
 - Data freshness: search results include `fetched_at`, seven-day `valid_until`, manual recheck, daily
   background refresh, and index diagnostics; external alert delivery is still missing.
-- Retrieval: GitHub Search, PostgreSQL full-text search, SQLite fallback, and local multilingual
-  vector recall/reranking exist. The vector encoder is process-cached; durable embedding-by-commit
-  storage and an external embedding model comparison are not yet implemented.
+- Retrieval: GitHub Search, PostgreSQL full-text search, SQLite fallback, local multilingual vectors,
+  and optional durable external embeddings exist. Production comparison still depends on configuring
+  an embeddings provider and recording the resulting evaluation metrics.
 - Deep investigation: the Agent investigates the top 1-3 repositories rather than the planned top
   20, to keep public-demo latency and GitHub usage bounded.
 - Health score: documentation, engineering, release cadence, PR interaction, and contributor
   distribution signals exist; first maintainer response time still requires timeline-event sampling.
-- Search progress: bounded step summaries are shown after a run; SSE incremental progress is not yet
-  implemented.
+- Search progress: bounded steps stream while the Agent runs and the browser can cancel background
+  refinement; server-side detached job resumption is not yet implemented.
 - Evaluation: a versioned 40-case constraint suite and 100-case curated relevance suite now report
   Recall@10, nDCG@10, MRR@10, and keyword-versus-vector lift. Pairwise preference accuracy and a
   second-annotator review are still absent.
-- Observability: Agent traces and durations are persisted; token cost, cache hit rate, and version trend
-  dashboards are not complete.
-- Reliability: model and GitHub degradation are visible; public rate limiting, scheduled stale-Issue
-  detection, and broader fault-injection coverage remain incomplete.
+- Observability: Agent traces, durations, request IDs, server timing, and lightweight path metrics
+  exist; token cost and version-trend dashboards are not complete.
+- Reliability: model and GitHub degradation and per-process public rate limiting are visible;
+  distributed rate limiting, scheduled stale-Issue detection, and broader fault injection remain.
 
 ## Not implemented in V1 yet
 
@@ -69,12 +75,13 @@ complete only when it has an implemented user path and a repeatable verification
 - GitHub OAuth personalization, profile export, and profile deletion.
 - Learning-to-rank training and personalized reranking.
 - Admin sync API with authentication.
-- End-to-end Playwright suite and production-like 150-case evaluation gate.
+- Production-like 150-case evaluation gate; the current E2E suite covers core desktop/mobile search
+  and navigation but not every detail workflow.
 - Demo video and final experiment report.
 
 ## Recommended implementation order
 
 1. Add second-annotator review and pairwise preference accuracy to the relevance suite.
-2. Add durable embedding-by-commit storage and compare an external embedding model.
+2. Record and compare a production external-embedding evaluation run.
 3. Add first-response timing from Issue/PR timeline events.
 4. Add SSE progress, public rate limiting, end-to-end tests, and production monitoring.

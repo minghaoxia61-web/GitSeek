@@ -2,7 +2,7 @@ from datetime import datetime
 
 from fastapi.testclient import TestClient
 
-from apps.api.dependencies import get_github_client
+from apps.api.dependencies import get_embedding_client, get_github_client
 from apps.api.main import app
 from packages.github_client.schemas import GitHubSearchPage
 
@@ -115,3 +115,37 @@ def test_equivalent_search_uses_recent_database_cache() -> None:
     assert second.json()["retrieval"]["cache_hit"] is True
     assert second.json()["retrieval"]["cached_at"] is not None
     assert second.json()["results"] == first.json()["results"]
+
+
+def test_external_embedding_mode_reranks_with_configured_provider() -> None:
+    class StubEmbeddingClient:
+        model = "test-embedding"
+
+        async def embed(self, inputs: list[str]) -> list[list[float]]:
+            return [[1.0, 0.0] for _ in inputs]
+
+    async def embedding_client():
+        yield StubEmbeddingClient()
+
+    app.dependency_overrides[get_github_client] = override_github_client
+    app.dependency_overrides[get_embedding_client] = embedding_client
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/v1/search",
+                json={
+                    "query": "FastAPI Python project",
+                    "limit": 1,
+                    "live_query_limit": 1,
+                    "embedding_mode": "external",
+                },
+            )
+    finally:
+        app.dependency_overrides.pop(get_github_client, None)
+        app.dependency_overrides.pop(get_embedding_client, None)
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ranking_version"] == "hybrid-external-vector-v3"
+    assert payload["retrieval"]["embedding_status"] == "external"
+    assert payload["retrieval"]["embedding_model"] == "test-embedding"
