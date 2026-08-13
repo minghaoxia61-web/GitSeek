@@ -100,3 +100,4 @@ def test_specific_search_terms_remove_popular_but_unrelated_candidates() -> None
 
     assert eligible_count == 1
     assert [result.full_name for result in results] == ["example/httpx-client"]
+    assert results[0].score_breakdown["relevance"] > 35

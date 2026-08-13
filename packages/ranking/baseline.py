@@ -157,6 +157,12 @@ def rank_repositories(
             query,
             (semantic_scores or {}).get(repository.full_name),
         )
+        if required_search_terms:
+            primary_term = required_search_terms[0].casefold().replace("-", " ")
+            normalized_name = re.sub(r"[-_/]+", " ", repository.name.casefold())
+            if primary_term in normalized_name:
+                breakdown["relevance"] = round(breakdown["relevance"] + 12.0, 2)
+                score = round(score + 12.0, 2)
         scored.append((repository, score, breakdown, matches))
 
     scored.sort(key=lambda item: (item[1], item[0].stargazers_count), reverse=True)

@@ -19,8 +19,8 @@ from packages.retrieval import (
     parse_search_constraints,
 )
 
-LOCAL_RANKING_VERSION = "hybrid-vector-v6"
-EXTERNAL_RANKING_VERSION = "hybrid-external-vector-v7"
+LOCAL_RANKING_VERSION = "hybrid-vector-v7"
+EXTERNAL_RANKING_VERSION = "hybrid-external-vector-v8"
 
 
 class SearchService:
