@@ -101,3 +101,21 @@ def test_specific_search_terms_remove_popular_but_unrelated_candidates() -> None
     assert eligible_count == 1
     assert [result.full_name for result in results] == ["example/httpx-client"]
     assert results[0].score_breakdown["relevance"] > 35
+
+
+def test_primary_repository_name_beats_extension_packages() -> None:
+    constraints = SearchConstraints(language="Python")
+    repositories = [
+        _repository(github_id=1, name="httpx", license_spdx="BSD-3-Clause", stars=15_000),
+        _repository(github_id=2, name="httpx-plugin", license_spdx="MIT", stars=500),
+    ]
+
+    results, _ = rank_repositories(
+        repositories,
+        constraints,
+        limit=10,
+        query="Python async HTTP client httpx",
+        required_search_terms=["httpx", "aiohttp"],
+    )
+
+    assert [result.full_name for result in results] == ["example/httpx", "example/httpx-plugin"]
