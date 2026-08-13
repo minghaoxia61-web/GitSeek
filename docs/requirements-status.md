@@ -6,8 +6,9 @@ complete only when it has an implemented user path and a repeatable verification
 ## Complete
 
 - Anonymous natural-language repository search.
-- Fast-first search that races deterministic and model-assisted paths, runs GitHub term queries in
-  parallel, ignores stale client responses, and defers deep investigation until a dossier is opened.
+- Fast-first search that races deterministic and model-assisted paths, expands common bilingual
+  intents locally, runs GitHub term queries in parallel, ignores stale client responses, and defers
+  deep investigation until a dossier is opened.
 - Learning and first-contribution search modes.
 - Structured query planning with model and rule-based fallback.
 - GitHub live search merged with a synchronized local repository index.
@@ -50,8 +51,8 @@ complete only when it has an implemented user path and a repeatable verification
 - Data freshness: search results include `fetched_at`, seven-day `valid_until`, manual recheck, daily
   background refresh, and index diagnostics; external alert delivery is still missing.
 - Retrieval: GitHub Search, PostgreSQL full-text search, SQLite fallback, local multilingual vectors,
-  and optional durable external embeddings exist. Production comparison still depends on configuring
-  an embeddings provider and recording the resulting evaluation metrics.
+  and optional durable external embeddings exist. The free local path is the production default;
+  external-provider comparison remains optional for deployments that already have a provider.
 - Deep investigation: the Agent investigates the top 1-3 repositories rather than the planned top
   20, to keep public-demo latency and GitHub usage bounded.
 - Health score: documentation, engineering, release cadence, PR interaction, and contributor
@@ -82,6 +83,6 @@ complete only when it has an implemented user path and a repeatable verification
 ## Recommended implementation order
 
 1. Add second-annotator review and pairwise preference accuracy to the relevance suite.
-2. Record and compare a production external-embedding evaluation run.
-3. Add first-response timing from Issue/PR timeline events.
-4. Add SSE progress, public rate limiting, end-to-end tests, and production monitoring.
+2. Add first-response timing from Issue/PR timeline events.
+3. Expand result-detail end-to-end coverage and production fault-injection checks.
+4. Optionally compare an external embedding provider when a deployment already has one.

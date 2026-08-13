@@ -23,7 +23,10 @@ class StubSearchClient:
     ) -> GitHubSearchPage:
         del page, per_page, etag, sort, order
         self.calls += 1
-        assert query.startswith("FastAPI language:Python archived:false")
+        normalized_query = query.casefold()
+        assert normalized_query.startswith("fastapi")
+        assert "language:python" in normalized_query
+        assert "archived:false" in normalized_query
         return GitHubSearchPage.model_validate(
             {
                 "result": {

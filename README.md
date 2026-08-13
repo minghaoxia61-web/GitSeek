@@ -160,7 +160,10 @@ both, and includes the data fetch time. If GitHub is rate-limited, indexed match
 
 The web client uses a fast-first search path: deterministic search and model-assisted interpretation
 start together, the first successful result is rendered immediately, and a later model result refines
-the page without blocking it. GitHub term queries are issued concurrently with bounded 50-item pages;
+the page without blocking it. Common Chinese and English intents are expanded locally into precise
+GitHub terms (for example, “异步 HTTP 客户端” becomes `httpx`, `aiohttp`, and `async http`), so the
+fast path improves recall without waiting for or billing another model. GitHub term queries are
+issued concurrently with bounded 50-item pages;
 repository investigation runs only after the user opens a project dossier.
 
 Index readiness and freshness are available through `GET /api/v1/index/status`.

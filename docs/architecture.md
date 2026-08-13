@@ -47,7 +47,8 @@ parser and is visible as a partial run rather than silently producing the same b
 The searchable vertical slice uses a deterministic hybrid pipeline:
 
 ```text
-Chinese query -> rule-based constraints -> local full-text index + GitHub live search
+Chinese query -> rule-based constraints + free bilingual term expansion
+                                      -> local full-text index + GitHub live search
                                               |
                                               v
                                   merge/dedupe -> hard filters -> metadata score -> Top 10
@@ -58,6 +59,9 @@ or conflicting evidence is excluded instead of letting a soft relevance score ov
 request. The ranking score uses only fields returned by repository search and labels itself
 `hybrid-vector-v3`; it blends deterministic metadata scoring with a cached local semantic vector and
 does not claim that README, tests, or contribution instructions exist before investigation.
+Common intents are expanded locally into up to three GitHub terms before live retrieval. This keeps
+the deterministic fast path precise without an LLM or external embeddings request; model-planned
+terms can still replace those expansions during the optional refinement path.
 Each result carries its retrieval sources and fetch time. When GitHub is unavailable or rate-limited,
 the same hard-filter and ranking path can operate on the synchronized index alone.
 

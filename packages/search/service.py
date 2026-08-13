@@ -12,7 +12,12 @@ from packages.embeddings import EmbeddingAPIError, ExternalEmbeddingService
 from packages.github_client import GitHubAPIError, GitHubClient
 from packages.persistence import ProductPersistence
 from packages.ranking import rank_repositories
-from packages.retrieval import RepositoryIndex, build_github_queries, parse_search_constraints
+from packages.retrieval import (
+    RepositoryIndex,
+    build_github_queries,
+    infer_github_terms,
+    parse_search_constraints,
+)
 
 LOCAL_RANKING_VERSION = "hybrid-vector-v3"
 EXTERNAL_RANKING_VERSION = "hybrid-external-vector-v4"
@@ -56,7 +61,13 @@ class SearchService:
             constraints.licenses = request.licenses
         if request.pushed_after is not None:
             constraints.pushed_after = request.pushed_after
-        github_queries = build_github_queries(constraints, search_terms)[: request.live_query_limit]
+        effective_search_terms = (
+            search_terms if search_terms is not None else infer_github_terms(request.query)
+        )
+        github_queries = build_github_queries(
+            constraints,
+            effective_search_terms,
+        )[: request.live_query_limit]
         github_query = " | ".join(github_queries)
         external_requested = request.embedding_mode == "external"
         expected_ranking_version = (

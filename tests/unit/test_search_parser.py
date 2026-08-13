@@ -1,6 +1,11 @@
 from datetime import date
 
-from packages.retrieval import build_github_queries, build_github_query, parse_search_constraints
+from packages.retrieval import (
+    build_github_queries,
+    build_github_query,
+    infer_github_terms,
+    parse_search_constraints,
+)
 
 
 def test_parses_chinese_search_constraints() -> None:
@@ -48,3 +53,21 @@ def test_infers_common_non_python_language() -> None:
 
     assert constraints.language == "Rust"
     assert "language:Rust" in build_github_query(constraints)
+
+
+def test_expands_bilingual_intents_without_a_model_call() -> None:
+    assert infer_github_terms("Python 异步 HTTP 客户端") == [
+        "httpx",
+        "aiohttp",
+        "async http",
+    ]
+    assert infer_github_terms("适合新手的网页爬虫") == [
+        "scrapy",
+        "web scraping",
+        "crawler",
+    ]
+    assert infer_github_terms("Python 数据分析 DataFrame 项目") == [
+        "dataframe",
+        "pandas",
+        "polars",
+    ]
