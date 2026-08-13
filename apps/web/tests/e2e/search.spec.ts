@@ -17,7 +17,7 @@ const searchResponse = {
   },
   source_total_count: 1234,
   eligible_candidate_count: 1,
-  ranking_version: "hybrid-vector-v3",
+  ranking_version: "hybrid-vector-v4",
   results: [{
     rank: 1,
     full_name: "fastapi/fastapi",

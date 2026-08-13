@@ -80,7 +80,7 @@ def test_search_endpoint_returns_explainable_baseline() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["ranking_version"] == "hybrid-vector-v3"
+    assert payload["ranking_version"] == "hybrid-vector-v4"
     assert payload["retrieval"]["github_candidates"] == 1
     assert payload["results"][0]["retrieval_sources"] == ["github_live"]
     fetched_at = datetime.fromisoformat(payload["results"][0]["data_fetched_at"])
@@ -149,6 +149,6 @@ def test_external_embedding_mode_reranks_with_configured_provider() -> None:
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["ranking_version"] == "hybrid-external-vector-v4"
+    assert payload["ranking_version"] == "hybrid-external-vector-v5"
     assert payload["retrieval"]["embedding_status"] == "external"
     assert payload["retrieval"]["embedding_model"] == "test-embedding"
