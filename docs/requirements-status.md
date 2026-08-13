@@ -43,8 +43,8 @@ complete only when it has an implemented user path and a repeatable verification
 ## Partial
 
 - Initial repository index: resumable seed tooling targets 3,000 repositories and the daily job now
-  grows an underfilled index across rotating popularity bands and result pages; production growth
-  still depends on a configured `CRON_SECRET`.
+  grows an underfilled index across Python, TypeScript, JavaScript, Java, Go, and Rust shards,
+  rotating popularity bands and result pages; production growth still depends on the scheduled job.
 - Platform and environment constraints: parsed and displayed, but not all repositories provide
   enough structured evidence for strict enforcement.
 - Data freshness: search results include `fetched_at`, seven-day `valid_until`, manual recheck, daily

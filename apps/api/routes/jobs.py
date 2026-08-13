@@ -17,16 +17,12 @@ from workers.sync.repositories import RepositorySynchronizer
 
 router = APIRouter(prefix="/api/v1/jobs", tags=["jobs"])
 
+REFRESH_LANGUAGES = ("Python", "TypeScript", "JavaScript", "Java", "Go", "Rust")
+REFRESH_STAR_BANDS = (">=1000", "100..999", "10..99", "1..9")
 REFRESH_QUERIES = [
-    "language:Python archived:false stars:>=10000",
-    "language:Python archived:false stars:3000..9999",
-    "language:Python archived:false stars:1000..2999",
-    "language:Python archived:false stars:300..999",
-    "language:Python archived:false stars:100..299",
-    "language:Python archived:false stars:30..99",
-    "language:Python archived:false stars:10..29",
-    "language:Python archived:false stars:1..9",
-    "language:Python archived:false stars:0",
+    f"language:{language} archived:false stars:{stars}"
+    for language in REFRESH_LANGUAGES
+    for stars in REFRESH_STAR_BANDS
 ]
 
 

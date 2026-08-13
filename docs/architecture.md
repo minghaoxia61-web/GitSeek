@@ -56,7 +56,7 @@ Chinese query -> rule-based constraints -> local full-text index + GitHub live s
 Language, license, archive state, and activity date are hard constraints. A candidate with missing
 or conflicting evidence is excluded instead of letting a soft relevance score override the user's
 request. The ranking score uses only fields returned by repository search and labels itself
-`hybrid-vector-v2`; it blends deterministic metadata scoring with a cached local semantic vector and
+`hybrid-vector-v3`; it blends deterministic metadata scoring with a cached local semantic vector and
 does not claim that README, tests, or contribution instructions exist before investigation.
 Each result carries its retrieval sources and fetch time. When GitHub is unavailable or rate-limited,
 the same hard-filter and ranking path can operate on the synchronized index alone.
@@ -65,7 +65,7 @@ Agent searches may request an external semantic ranker. Query and repository tex
 batches through an OpenAI-compatible embeddings endpoint, then blended with the same deterministic
 metadata score. Repository vectors are stored by model and content hash; only new or changed content
 is embedded again. Provider errors never bypass hard filters: the request falls back to
-`hybrid-vector-v2`, while successful external ranking is identified as `hybrid-external-vector-v3`.
+`hybrid-vector-v3`, while successful external ranking is identified as `hybrid-external-vector-v4`.
 The language model planner and embedding provider use separate credentials and endpoints.
 
 ## On-demand repository investigation

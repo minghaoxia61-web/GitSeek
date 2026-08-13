@@ -14,8 +14,8 @@ from packages.persistence import ProductPersistence
 from packages.ranking import rank_repositories
 from packages.retrieval import RepositoryIndex, build_github_queries, parse_search_constraints
 
-LOCAL_RANKING_VERSION = "hybrid-vector-v2"
-EXTERNAL_RANKING_VERSION = "hybrid-external-vector-v3"
+LOCAL_RANKING_VERSION = "hybrid-vector-v3"
+EXTERNAL_RANKING_VERSION = "hybrid-external-vector-v4"
 
 
 class SearchService:

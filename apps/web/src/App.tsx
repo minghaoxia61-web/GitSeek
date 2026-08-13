@@ -722,7 +722,7 @@ function emptySearchResponse(query: string, options: SearchOptions, pushedAfter:
     },
     source_total_count: 0,
     eligible_candidate_count: 0,
-    ranking_version: "hybrid-vector-v2",
+    ranking_version: "hybrid-vector-v3",
     results: [],
     retrieval: { local_candidates: 0, github_candidates: 0, github_status: "unavailable", index_freshest_at: null },
   };
@@ -920,7 +920,12 @@ export default function App() {
       body: JSON.stringify(requestBody),
     });
     const agentPromise = streamAgentRun(
-      { ...requestBody, live_query_limit: 3, embedding_mode: "external", investigate_limit: 0 },
+      {
+        ...requestBody,
+        live_query_limit: 3,
+        embedding_mode: connection.embeddingConfigured ? "external" : "local",
+        investigate_limit: 0,
+      },
       (step) => {
         if (sequence !== searchSequence.current) return;
         setSearchNotice(null);

@@ -123,6 +123,10 @@ falls back to the local multilingual vector ranker and reports that fallback in 
 Repository vectors are persisted by model and content hash, so unchanged repositories are not sent
 to the provider again.
 
+An external embedding provider is optional. When it is not configured, the web client requests the
+local ranker directly and does not make a failed provider call or show a degradation warning. This
+keeps the default deployment free of an additional model bill.
+
 Run migrations once against the cloud database before using persistence-backed endpoints:
 
 ```powershell
@@ -160,6 +164,9 @@ the page without blocking it. GitHub term queries are issued concurrently with b
 repository investigation runs only after the user opens a project dossier.
 
 Index readiness and freshness are available through `GET /api/v1/index/status`.
+The authenticated daily refresh rotates persistent cursors across Python, TypeScript, JavaScript,
+Java, Go, and Rust popularity shards. A failed shard retains its page for retry, while unchanged
+repository metrics no longer create duplicate historical snapshots.
 Lightweight process metrics are available through `GET /api/v1/metrics`; responses also include
 `X-Request-ID` and `Server-Timing`. Public search and Agent endpoints use configurable per-IP,
 per-process minute limits and return standard `Retry-After` metadata when saturated.

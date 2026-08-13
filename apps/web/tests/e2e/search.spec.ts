@@ -17,7 +17,7 @@ const searchResponse = {
   },
   source_total_count: 1234,
   eligible_candidate_count: 1,
-  ranking_version: "hybrid-vector-v2",
+  ranking_version: "hybrid-vector-v3",
   results: [{
     rank: 1,
     full_name: "fastapi/fastapi",
@@ -54,9 +54,11 @@ async function mockApi(page: Page) {
   }));
   await page.route("**/api/v1/saved**", (route) => route.fulfill({ json: { repositories: [] } }));
   await page.route("**/api/v1/search", (route) => route.fulfill({ json: searchResponse }));
-  await page.route("**/api/v1/agent/runs/stream", (route) => route.fulfill({
-    contentType: "text/event-stream",
-    body: `event: result\ndata: ${JSON.stringify({
+  await page.route("**/api/v1/agent/runs/stream", async (route) => {
+    expect(route.request().postDataJSON()).toMatchObject({ embedding_mode: "local" });
+    await route.fulfill({
+      contentType: "text/event-stream",
+      body: `event: result\ndata: ${JSON.stringify({
       run_id: "e2e-run",
       status: "succeeded",
       created_at: "2026-08-12T00:00:00Z",
@@ -68,8 +70,9 @@ async function mockApi(page: Page) {
       investigations: [],
       verification: [],
       steps: [],
-    })}\n\n`,
-  }));
+      })}\n\n`,
+    });
+  });
 }
 
 test.beforeEach(async ({ page }) => {

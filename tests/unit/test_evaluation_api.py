@@ -19,9 +19,9 @@ def test_evaluation_endpoint_reports_real_parser_run() -> None:
     assert payload["retrieval_case_count"] == 100
     assert payload["relevance_judgment_count"] == 2300
     metrics = {item["key"]: item for item in payload["metrics"]}
-    assert 0 <= metrics["recall_at_10"]["value"] <= 100
-    assert 0 <= metrics["ndcg_at_10"]["value"] <= 100
-    assert 0 <= metrics["mrr_at_10"]["value"] <= 100
+    assert metrics["recall_at_10"]["value"] >= 85
+    assert metrics["ndcg_at_10"]["value"] >= 75
+    assert metrics["mrr_at_10"]["value"] >= 80
     assert metrics["ndcg_at_10"]["value"] >= metrics["keyword_ndcg_at_10"]["value"]
     assert metrics["ndcg_lift"]["value"] >= 0
 
