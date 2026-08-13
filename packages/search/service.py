@@ -19,8 +19,8 @@ from packages.retrieval import (
     parse_search_constraints,
 )
 
-LOCAL_RANKING_VERSION = "hybrid-vector-v5"
-EXTERNAL_RANKING_VERSION = "hybrid-external-vector-v6"
+LOCAL_RANKING_VERSION = "hybrid-vector-v6"
+EXTERNAL_RANKING_VERSION = "hybrid-external-vector-v7"
 
 
 class SearchService:
@@ -154,7 +154,7 @@ class SearchService:
             limit=request.limit,
             query=" ".join([request.query, *effective_search_terms]),
             semantic_scores=semantic_scores,
-            required_search_terms=inferred_search_terms,
+            required_search_terms=inferred_search_terms[:2],
         )
         for result in results:
             result.retrieval_sources = sorted(sources.get(result.full_name, set()))
