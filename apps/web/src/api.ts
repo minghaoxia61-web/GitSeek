@@ -75,8 +75,14 @@ async function errorMessage(response: Response): Promise<string> {
 export async function apiFetch<T>(path: string, init?: RequestInit, baseUrl?: string): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(apiUrl(path, baseUrl), init);
-  } catch {
+    response = await fetch(apiUrl(path, baseUrl), {
+      ...init,
+      signal: init?.signal ?? AbortSignal.timeout(30_000),
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "TimeoutError") {
+      throw new ApiError("请求超过 30 秒仍未完成，请稍后重试或减少搜索条件。", null, "network");
+    }
     throw new ApiError("无法连接 GitSeek 服务，请检查网络或后端地址。", null, "network");
   }
   if (!response.ok) {

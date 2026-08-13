@@ -13,6 +13,8 @@ def _repository(
     archived: bool = False,
     pushed_at: str = "2026-07-20T00:00:00Z",
     stars: int = 100,
+    description: str = "FastAPI starter with typed APIs",
+    topics: list[str] | None = None,
 ) -> GitHubRepository:
     return GitHubRepository.model_validate(
         {
@@ -20,11 +22,11 @@ def _repository(
             "name": name,
             "full_name": f"example/{name}",
             "owner": {"login": "example"},
-            "description": "FastAPI starter with typed APIs",
+            "description": description,
             "html_url": f"https://github.com/example/{name}",
             "default_branch": "main",
             "language": "Python",
-            "topics": ["fastapi", "python"],
+            "topics": topics if topics is not None else ["fastapi", "python"],
             "license": {"spdx_id": license_spdx} if license_spdx else None,
             "stargazers_count": stars,
             "forks_count": 5,
@@ -67,3 +69,34 @@ def test_ranking_enforces_hard_constraints_before_scoring() -> None:
     assert results[0].constraint_match["license"] == "MATCH"
     assert results[0].score_breakdown["relevance"] == 35.0
 
+
+def test_specific_search_terms_remove_popular_but_unrelated_candidates() -> None:
+    constraints = SearchConstraints(language="Python")
+    repositories = [
+        _repository(
+            github_id=1,
+            name="httpx-client",
+            license_spdx="MIT",
+            description="An async HTTP client for Python",
+            topics=["httpx", "asyncio"],
+        ),
+        _repository(
+            github_id=2,
+            name="popular-framework",
+            license_spdx="MIT",
+            stars=200_000,
+            description="A popular application framework",
+            topics=["python", "framework"],
+        ),
+    ]
+
+    results, eligible_count = rank_repositories(
+        repositories,
+        constraints,
+        limit=10,
+        query="Python async HTTP client httpx aiohttp",
+        required_search_terms=["httpx", "aiohttp", "async http"],
+    )
+
+    assert eligible_count == 1
+    assert [result.full_name for result in results] == ["example/httpx-client"]

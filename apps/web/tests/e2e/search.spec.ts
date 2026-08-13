@@ -17,7 +17,7 @@ const searchResponse = {
   },
   source_total_count: 1234,
   eligible_candidate_count: 1,
-  ranking_version: "hybrid-vector-v4",
+  ranking_version: "hybrid-vector-v5",
   results: [{
     rank: 1,
     full_name: "fastapi/fastapi",
@@ -54,6 +54,31 @@ async function mockApi(page: Page) {
   }));
   await page.route("**/api/v1/saved**", (route) => route.fulfill({ json: { repositories: [] } }));
   await page.route("**/api/v1/search", (route) => route.fulfill({ json: searchResponse }));
+  await page.route("**/api/v1/repos/fastapi/fastapi/investigate", (route) => route.fulfill({ json: {
+    full_name: "fastapi/fastapi",
+    description: "FastAPI framework, easy to learn and ready for production.",
+    html_url: "https://github.com/fastapi/fastapi",
+    default_branch: "master",
+    fetched_at: "2026-08-13T00:00:00Z",
+    confidence: "high",
+    signals: {
+      has_readme: true, has_contributing: true, has_code_of_conduct: true,
+      has_issue_template: true, has_pull_request_template: true, has_security_policy: true,
+      has_license: true, has_tests: true, has_ci: true, has_pyproject: true,
+      has_dependency_file: true, has_docker: true, readme_has_quickstart: true,
+    },
+    scores: { community_health: 95, documentation: 95, engineering: 90, learning_friendliness: 90, maintenance: 85 },
+    activity: {
+      releases_sampled: 10, latest_release_at: "2026-08-01T00:00:00Z",
+      median_release_interval_days: 30, pull_requests_sampled: 20,
+      merged_pull_request_ratio: .9, median_pull_request_resolution_hours: 48,
+      contributors_sampled: 30, top_contributor_share: .2, contributor_continuity: "distributed",
+    },
+    evidence: [{ id: "readme", fact: "README detected", value: true, source_url: "https://github.com/fastapi/fastapi#readme", fetched_at: "2026-08-13T00:00:00Z", confidence: "high" }],
+    risks: ["开始前确认本地 Python 版本。"],
+    limitations: ["只读取公开仓库信息。"],
+  } }));
+  await page.route("**/api/v1/repos/fastapi/fastapi/issues?limit=5", (route) => route.fulfill({ json: { issues: [] } }));
   await page.route("**/api/v1/agent/runs/stream", async (route) => {
     expect(route.request().postDataJSON()).toMatchObject({ embedding_mode: "local" });
     await route.fulfill({
@@ -96,4 +121,16 @@ test("keeps primary navigation usable on a mobile viewport", async ({ page }) =>
   await expect(page.getByRole("navigation", { name: "主导航" })).toBeVisible();
   await page.getByRole("button", { name: "收藏" }).click();
   await expect(page.getByRole("heading", { name: "留着以后再看" })).toBeVisible();
+});
+
+test("puts a plain-language decision before detailed repository evidence", async ({ page }) => {
+  const query = page.getByRole("textbox", { name: /描述用途/ });
+  await query.fill("适合初学者的 FastAPI 项目");
+  await page.getByRole("button", { name: /搜索项目/ }).click();
+  await page.getByRole("button", { name: /查看档案/ }).click();
+
+  const summary = page.getByRole("region", { name: "项目判断摘要" });
+  await expect(summary.getByText("值得继续了解")).toBeVisible();
+  await expect(summary.getByText("7 / 7")).toBeVisible();
+  await expect(summary.getByText("活跃", { exact: true })).toBeVisible();
 });

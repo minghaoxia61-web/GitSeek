@@ -19,8 +19,8 @@ from packages.retrieval import (
     parse_search_constraints,
 )
 
-LOCAL_RANKING_VERSION = "hybrid-vector-v4"
-EXTERNAL_RANKING_VERSION = "hybrid-external-vector-v5"
+LOCAL_RANKING_VERSION = "hybrid-vector-v5"
+EXTERNAL_RANKING_VERSION = "hybrid-external-vector-v6"
 
 
 class SearchService:
@@ -61,9 +61,8 @@ class SearchService:
             constraints.licenses = request.licenses
         if request.pushed_after is not None:
             constraints.pushed_after = request.pushed_after
-        effective_search_terms = (
-            search_terms if search_terms is not None else infer_github_terms(request.query)
-        )
+        inferred_search_terms = infer_github_terms(request.query) if search_terms is None else []
+        effective_search_terms = search_terms if search_terms is not None else inferred_search_terms
         github_queries = build_github_queries(
             constraints,
             effective_search_terms,
@@ -155,6 +154,7 @@ class SearchService:
             limit=request.limit,
             query=" ".join([request.query, *effective_search_terms]),
             semantic_scores=semantic_scores,
+            required_search_terms=inferred_search_terms,
         )
         for result in results:
             result.retrieval_sources = sorted(sources.get(result.full_name, set()))

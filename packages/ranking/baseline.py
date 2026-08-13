@@ -1,4 +1,5 @@
 import math
+import re
 from datetime import UTC, datetime
 
 from packages.domain.search import Recommendation, SearchConstraints
@@ -45,6 +46,26 @@ def _constraint_matches(
 
 def _is_eligible(matches: dict[str, str]) -> bool:
     return all(value == "MATCH" for value in matches.values())
+
+
+def _matches_any_search_term(
+    repository: GitHubRepository,
+    search_terms: list[str],
+) -> bool:
+    corpus = " ".join(
+        [
+            repository.name,
+            repository.description or "",
+            repository.language or "",
+            *repository.topics,
+        ]
+    ).casefold()
+    normalized_corpus = re.sub(r"[-_/]+", " ", corpus)
+    for term in search_terms:
+        tokens = re.findall(r"[a-z][a-z0-9.+#-]*|[\u4e00-\u9fff]{2,}", term.casefold())
+        if tokens and all(token.replace("-", " ") in normalized_corpus for token in tokens):
+            return True
+    return False
 
 
 def _score(
@@ -115,6 +136,7 @@ def rank_repositories(
     now: datetime | None = None,
     query: str | None = None,
     semantic_scores: dict[str, float] | None = None,
+    required_search_terms: list[str] | None = None,
 ) -> tuple[list[Recommendation], int]:
     reference_time = now or datetime.now(UTC)
     scored: list[tuple[GitHubRepository, float, dict[str, float], dict[str, str]]] = []
@@ -122,6 +144,11 @@ def rank_repositories(
     for repository in repositories:
         matches = _constraint_matches(repository, constraints)
         if not _is_eligible(matches):
+            continue
+        if required_search_terms and not _matches_any_search_term(
+            repository,
+            required_search_terms,
+        ):
             continue
         score, breakdown = _score(
             repository,

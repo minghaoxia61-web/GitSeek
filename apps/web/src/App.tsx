@@ -264,6 +264,7 @@ function DiscoverView({ onSearch, initialQuery, initialOptions, history }: { onS
   const [mode, setMode] = useState<"learn" | "contribute">(initialOptions.purpose === "contribution" ? "contribute" : "learn");
   const [advanced, setAdvanced] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingStage, setLoadingStage] = useState(0);
   const [constraints, setConstraints] = useState<string[]>([
     ...(initialOptions.licenses.length ? ["MIT / Apache"] : []),
     ...(initialOptions.recentOnly ? ["半年内活跃"] : []),
@@ -274,6 +275,19 @@ function DiscoverView({ onSearch, initialQuery, initialOptions, history }: { onS
   const [projectSize, setProjectSize] = useState<"" | "small" | "medium" | "large">(initialOptions.projectSize ?? "");
 
   const constraintOptions = ["MIT / Apache", "半年内活跃", "支持 Windows"];
+  const loadingStages = ["解析条件", "查询仓库", "合并去重", "相关性排序"];
+
+  useEffect(() => {
+    if (!loading) {
+      setLoadingStage(0);
+      return;
+    }
+    const timer = window.setInterval(
+      () => setLoadingStage((current) => Math.min(current + 1, loadingStages.length - 1)),
+      800,
+    );
+    return () => window.clearInterval(timer);
+  }, [loading, loadingStages.length]);
 
   function toggleConstraint(value: string) {
     setConstraints((current) => current.includes(value)
@@ -339,7 +353,7 @@ function DiscoverView({ onSearch, initialQuery, initialOptions, history }: { onS
             <button type="button" className="text-button" onClick={() => setAdvanced(!advanced)}>{advanced ? "收起条件" : "高级约束"} <span>{advanced ? "−" : "+"}</span></button>
             <button className="primary-button" disabled={loading}>{loading ? <><i className="spinner" /> 正在查找</> : <>搜索项目 <b>↵</b></>}</button>
           </div>
-          {loading && <div className="search-progress" aria-live="polite"><span className="active">解析条件</span><span className="active">混合检索</span><span className="active">深度调查</span><span>证据验证</span></div>}
+          {loading && <div className="search-progress" aria-live="polite">{loadingStages.map((stage, index) => <span className={index <= loadingStage ? "active" : ""} aria-current={index === loadingStage ? "step" : undefined} key={stage}>{stage}</span>)}</div>}
         </form>
       </section>
 
@@ -514,6 +528,26 @@ function DetailView({
   ] as const;
   const risks = investigation?.risks ?? repo.risks;
   const activity = investigation?.activity;
+  const verifiedSignalCount = signalRows.filter(([, value]) => value === true).length;
+  const decisionTitle = status !== "ready"
+    ? "等待仓库核验"
+    : dossierScore >= 75 && risks.length <= 2
+      ? "值得继续了解"
+      : dossierScore >= 55
+        ? "可以尝试，先确认风险"
+        : "暂不建议直接投入";
+  const decisionCopy = status !== "ready"
+    ? "先保留搜索阶段判断，核验完成后再决定是否投入时间。"
+    : signals?.has_contributing && signals.readme_has_quickstart
+      ? "入门路径比较清楚，先按贡献指南完成一次本地运行。"
+      : "项目仍可查看，但开始前需要自己补齐环境与贡献步骤。";
+  const maintenanceLabel = !activity
+    ? "等待数据"
+    : (scores?.maintenance ?? 0) >= 70
+      ? "活跃"
+      : (scores?.maintenance ?? 0) >= 45
+        ? "一般"
+        : "需确认";
 
   async function feedback(action: "helpful" | "not_relevant" | "saved", reason?: string) {
     await onFeedback(action, reason);
@@ -538,6 +572,19 @@ function DetailView({
 
       {status === "loading" && <div className="detail-status"><i className="spinner" /> 正在读取社区档案、仓库目录、工作流和 README…</div>}
       {status === "unavailable" && <div className="notice"><Signal tone="amber" /><span>实时调查接口暂不可用，当前保留搜索阶段数据；本地 API 启动后重新打开档案即可恢复真实证据。</span></div>}
+
+      <section className="decision-brief" aria-label="项目判断摘要">
+        <div className="decision-verdict">
+          <small>当前建议</small>
+          <strong>{decisionTitle}</strong>
+          <p>{decisionCopy}</p>
+        </div>
+        <dl>
+          <div><dt>已验证信号</dt><dd>{status === "ready" ? `${verifiedSignalCount} / ${signalRows.length}` : "—"}</dd></div>
+          <div><dt>维护状态</dt><dd>{maintenanceLabel}</dd></div>
+          <div><dt>首要注意</dt><dd>{risks[0] ?? "暂未发现明显阻碍"}</dd></div>
+        </dl>
+      </section>
 
       <div className="detail-grid">
         <section className="detail-main">
@@ -722,7 +769,7 @@ function emptySearchResponse(query: string, options: SearchOptions, pushedAfter:
     },
     source_total_count: 0,
     eligible_candidate_count: 0,
-    ranking_version: "hybrid-vector-v4",
+    ranking_version: "hybrid-vector-v5",
     results: [],
     retrieval: { local_candidates: 0, github_candidates: 0, github_status: "unavailable", index_freshest_at: null },
   };
