@@ -229,13 +229,15 @@ function Shell({
               key={item.id}
               className={view === item.id || (view === "detail" && item.id === detailParent) ? "active" : ""}
               onClick={() => setView(item.id)}
+              aria-label={item.label}
+              title={item.label}
             >
               <span className={`nav-glyph nav-glyph--${item.id}`} />
               <span>{item.label}</span>
               {item.id === "saved" && savedCount > 0 && <em className="nav-count">{savedCount}</em>}
             </button>
           ))}
-          {hasResults && <button className={view === "results" || (view === "detail" && detailParent === "results") ? "active" : ""} onClick={() => setView("results")}><span className="nav-glyph nav-glyph--results" /><span>结果</span></button>}
+          {hasResults && <button className={view === "results" || (view === "detail" && detailParent === "results") ? "active" : ""} onClick={() => setView("results")} aria-label="结果" title="结果"><span className="nav-glyph nav-glyph--results" /><span>结果</span></button>}
         </nav>
 
         <div className="sidebar-footer">
