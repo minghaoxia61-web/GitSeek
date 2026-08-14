@@ -71,3 +71,18 @@ def test_expands_bilingual_intents_without_a_model_call() -> None:
         "pandas",
         "polars",
     ]
+    assert infer_github_terms("想做一个微信小程序") == [
+        "wechat miniprogram",
+        "taro",
+        "uni-app",
+    ]
+    assert infer_github_terms("适合 Windows 的 Rust GUI 项目") == [
+        "egui",
+        "iced",
+        "rust gui",
+    ]
+    assert infer_github_terms("Android Jetpack Compose 入门") == [
+        "android",
+        "kotlin android",
+        "jetpack compose",
+    ]

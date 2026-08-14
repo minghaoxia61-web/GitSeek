@@ -40,6 +40,13 @@ complete only when it has an implemented user path and a repeatable verification
   suppression for the production repository index.
 - Streaming Agent progress with client cancellation, recent query-plan caching, configurable public
   request limits, request IDs, timing/health metrics, and desktop/mobile Playwright smoke tests.
+- Twelve-hour repository dossier caching, 30-minute Issue caching, explicit cache bypass, and stale
+  fallback during GitHub rate limits.
+- Device-level feedback reranking with bounded positive and negative adjustments and no login.
+- Tiered index refresh frequency, safe archived/inactive long-tail pruning, and an automated GitHub
+  Actions quality gate for backend, retrieval, desktop, and mobile checks.
+- A Windows remote-interface bootstrap that loads normal web updates without reinstalling and falls
+  back to the packaged interface when the hosted app is unavailable.
 
 ## Partial
 
@@ -65,7 +72,7 @@ complete only when it has an implemented user path and a repeatable verification
 - Observability: Agent traces, durations, request IDs, server timing, and lightweight path metrics
   exist; token cost and version-trend dashboards are not complete.
 - Reliability: model and GitHub degradation and per-process public rate limiting are visible;
-  distributed rate limiting, scheduled stale-Issue detection, and broader fault injection remain.
+  distributed rate limiting and broader fault injection remain.
 
 ## Not implemented in V1 yet
 
@@ -84,5 +91,5 @@ complete only when it has an implemented user path and a repeatable verification
 
 1. Add second-annotator review and pairwise preference accuracy to the relevance suite.
 2. Add first-response timing from Issue/PR timeline events.
-3. Expand result-detail end-to-end coverage and production fault-injection checks.
+3. Expand production fault-injection checks and distributed rate limiting.
 4. Optionally compare an external embedding provider when a deployment already has one.

@@ -118,6 +118,16 @@ class ContributionIssueRecord(Base):
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class RepositoryDetailCache(TimestampMixin, Base):
+    __tablename__ = "repository_detail_cache"
+
+    repository_full_name: Mapped[str] = mapped_column(String(255), primary_key=True)
+    investigation_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    investigation_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    issues_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    issues_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class AgentRunRecord(Base):
     __tablename__ = "agent_runs"
 

@@ -1,8 +1,9 @@
 import argparse
 import asyncio
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.orm import Session
 
 from packages.database import create_db_engine, create_session_factory
@@ -140,6 +141,29 @@ class RepositorySynchronizer:
             repository.raw_metadata = item.model_dump(mode="json")
 
         return was_created
+
+    def prune_stale(self, *, now: datetime | None = None) -> int:
+        reference_time = now or datetime.now(UTC)
+        archived_cutoff = reference_time - timedelta(days=30)
+        stale_cutoff = reference_time - timedelta(days=90)
+        inactive_cutoff = reference_time - timedelta(days=365)
+        result = self._session.execute(
+            delete(Repository).where(
+                or_(
+                    and_(Repository.archived.is_(True), Repository.fetched_at < archived_cutoff),
+                    and_(
+                        Repository.stars < 10,
+                        Repository.fetched_at < stale_cutoff,
+                        or_(
+                            Repository.pushed_at.is_(None),
+                            Repository.pushed_at < inactive_cutoff,
+                        ),
+                    ),
+                )
+            )
+        )
+        self._session.commit()
+        return int(result.rowcount or 0)
 
 
 async def run_sync(query: str, pages: int) -> SyncStats:

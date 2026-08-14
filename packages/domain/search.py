@@ -15,6 +15,7 @@ class SearchRequest(BaseModel):
     pushed_after: date | None = None
     live_query_limit: int = Field(default=3, ge=1, le=3)
     embedding_mode: Literal["local", "external"] = "local"
+    device_id: str | None = Field(default=None, max_length=64)
 
 
 class SearchConstraints(BaseModel):

@@ -19,6 +19,7 @@ def test_repository_schema_can_be_created_in_memory() -> None:
         "repositories",
         "repository_features",
         "repository_embeddings",
+        "repository_detail_cache",
         "repository_snapshots",
         "saved_repositories",
         "search_sessions",

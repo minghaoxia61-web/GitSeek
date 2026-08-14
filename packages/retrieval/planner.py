@@ -32,6 +32,46 @@ INTENT_QUERY_EXPANSIONS = (
         ("爬虫", "抓取", "采集", "scraping", "crawler", "scrapy"),
         ("scrapy", "web scraping", "crawler"),
     ),
+    (
+        ("前端组件", "组件库", "设计系统", "react component", "ui library"),
+        ("react component", "react ui", "design system"),
+    ),
+    (
+        ("桌面应用", "windows 应用", "desktop app", "electron", "tauri"),
+        ("tauri", "electron", "desktop app"),
+    ),
+    (
+        ("微信小程序", "小程序", "miniprogram", "mini program", "taro", "uni-app"),
+        ("wechat miniprogram", "taro", "uni-app"),
+    ),
+    (
+        ("游戏开发", "游戏引擎", "game development", "game engine", "pygame", "godot"),
+        ("godot", "pygame", "game engine"),
+    ),
+    (
+        ("自动化脚本", "任务自动化", "automation script", "task automation"),
+        ("automation", "scripting", "task automation"),
+    ),
+    (
+        ("devops", "持续部署", "基础设施即代码", "infrastructure as code", " ci/cd "),
+        ("devops", "ci cd", "infrastructure as code"),
+    ),
+    (
+        ("android", "安卓", "jetpack compose", "kotlin android"),
+        ("android", "kotlin android", "jetpack compose"),
+    ),
+    (
+        ("flutter", "dart 移动", "跨平台移动"),
+        ("flutter", "dart", "flutter app"),
+    ),
+    (
+        ("rust gui", "rust 界面", "egui", "iced"),
+        ("egui", "iced", "rust gui"),
+    ),
+    (
+        ("毕业设计", "课程设计", "course project", "capstone"),
+        ("full stack starter", "management system", "course project"),
+    ),
 )
 
 

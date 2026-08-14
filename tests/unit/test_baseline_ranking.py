@@ -119,3 +119,21 @@ def test_primary_repository_name_beats_extension_packages() -> None:
     )
 
     assert [result.full_name for result in results] == ["example/httpx", "example/httpx-plugin"]
+
+
+def test_device_feedback_can_demote_a_previous_bad_match() -> None:
+    constraints = SearchConstraints(language="Python")
+    repositories = [
+        _repository(github_id=1, name="first", license_spdx="MIT", stars=10_000),
+        _repository(github_id=2, name="second", license_spdx="MIT", stars=100),
+    ]
+
+    results, _ = rank_repositories(
+        repositories,
+        constraints,
+        limit=10,
+        repository_adjustments={"example/first": -15.0, "example/second": 7.0},
+    )
+
+    assert [result.full_name for result in results] == ["example/second", "example/first"]
+    assert results[0].score_breakdown["personalization"] == 7.0

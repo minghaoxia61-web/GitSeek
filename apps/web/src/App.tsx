@@ -769,7 +769,7 @@ function emptySearchResponse(query: string, options: SearchOptions, pushedAfter:
     },
     source_total_count: 0,
     eligible_candidate_count: 0,
-    ranking_version: "hybrid-vector-v8",
+    ranking_version: "hybrid-vector-v9",
     results: [],
     retrieval: { local_candidates: 0, github_candidates: 0, github_status: "unavailable", index_freshest_at: null },
   };
@@ -955,6 +955,7 @@ export default function App() {
       pushed_after: options.recentOnly ? recentDate.toISOString().slice(0, 10) : null,
       live_query_limit: 1,
       embedding_mode: "local",
+      device_id: getDeviceId(),
     };
     const pushedAfter = options.recentOnly ? recentDate.toISOString().slice(0, 10) : null;
     setSearchDraft({ query, options });
@@ -1039,21 +1040,21 @@ export default function App() {
     setCompare((current) => current.includes(name) ? current.filter((item) => item !== name) : current.length < 3 ? [...current, name] : current);
   }
 
-  function refreshDetail(repo: Recommendation) {
+  function refreshDetail(repo: Recommendation, force = false) {
     setInvestigation(null);
     setInvestigationStatus("loading");
     setIssues([]);
     setIssueStatus("loading");
     setView("detail");
     const [owner, name] = repo.full_name.split("/");
-    apiFetch<RepositoryInvestigation>(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/investigate`)
+    apiFetch<RepositoryInvestigation>(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/investigate${force ? "?refresh=true" : ""}`)
       .then((payload) => {
         setInvestigation(payload);
         setInvestigationStatus("ready");
       })
       .catch(() => setInvestigationStatus("unavailable"));
 
-    apiFetch<{ issues: ContributionIssue[] }>(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues?limit=5`)
+    apiFetch<{ issues: ContributionIssue[] }>(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues?limit=5${force ? "&refresh=true" : ""}`)
       .then((payload) => {
         setIssues(payload.issues);
         setIssueStatus("ready");
@@ -1131,7 +1132,7 @@ export default function App() {
       {view === "discover" && <DiscoverView onSearch={search} initialQuery={searchDraft.query} initialOptions={searchDraft.options} history={searchHistory} />}
       {view === "results" && <ResultsView data={data} agentRun={agentRun} agentProgress={agentProgress} compare={compare} saved={savedEntries.map((item) => item.repository)} toggleCompare={toggleCompare} onSave={(repo) => void (savedEntries.some((item) => item.repository === repo.full_name) ? removeSavedRepository(repo.full_name) : saveRepository(repo))} problem={searchProblem} notice={searchNotice} onCancelAgent={() => agentController.current?.abort()} onNewSearch={() => setView("discover")} onDetail={(repo) => { setDetailParent("results"); openDetail(repo); }} />}
       {view === "saved" && <SavedView entries={savedEntries} onOpen={(repo) => { setDetailParent("saved"); openDetail(repo); }} onRemove={(repository) => void removeSavedRepository(repository)} onDiscover={() => setView("discover")} />}
-      {view === "detail" && selectedRepo && <DetailView repo={selectedRepo} investigation={investigation} status={investigationStatus} issues={issues} issueStatus={issueStatus} onBack={() => setView(detailParent)} onCompare={() => toggleCompare(selectedRepo.full_name)} onRefresh={() => refreshDetail(selectedRepo)} onFeedback={submitFeedback} />}
+      {view === "detail" && selectedRepo && <DetailView repo={selectedRepo} investigation={investigation} status={investigationStatus} issues={issues} issueStatus={issueStatus} onBack={() => setView(detailParent)} onCompare={() => toggleCompare(selectedRepo.full_name)} onRefresh={() => refreshDetail(selectedRepo, true)} onFeedback={submitFeedback} />}
       {view === "compare" && <CompareView repos={compareRepos} onDiscover={() => setView(data.query ? "results" : "discover")} onDetail={(repo) => { setDetailParent(data.query ? "results" : "saved"); openDetail(repo); }} onRemove={toggleCompare} />}
       {view === "evals" && <EvalsView />}
       {view === "settings" && <SettingsView connection={connection} onApiChanged={() => setApiRevision((current) => current + 1)} />}

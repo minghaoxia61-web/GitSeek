@@ -137,6 +137,7 @@ def rank_repositories(
     query: str | None = None,
     semantic_scores: dict[str, float] | None = None,
     required_search_terms: list[str] | None = None,
+    repository_adjustments: dict[str, float] | None = None,
 ) -> tuple[list[Recommendation], int]:
     reference_time = now or datetime.now(UTC)
     scored: list[tuple[GitHubRepository, float, dict[str, float], dict[str, str]]] = []
@@ -164,6 +165,10 @@ def rank_repositories(
                 name_bonus = 24.0 if normalized_name == primary_term else 10.0
                 breakdown["relevance"] = round(breakdown["relevance"] + name_bonus, 2)
                 score = round(score + name_bonus, 2)
+        personalization = (repository_adjustments or {}).get(repository.full_name, 0.0)
+        if personalization:
+            breakdown["personalization"] = round(personalization, 2)
+            score = round(score + personalization, 2)
         scored.append((repository, score, breakdown, matches))
 
     scored.sort(key=lambda item: (item[1], item[0].stargazers_count), reverse=True)

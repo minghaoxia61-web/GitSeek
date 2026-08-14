@@ -19,8 +19,8 @@ from packages.retrieval import (
     parse_search_constraints,
 )
 
-LOCAL_RANKING_VERSION = "hybrid-vector-v8"
-EXTERNAL_RANKING_VERSION = "hybrid-external-vector-v9"
+LOCAL_RANKING_VERSION = "hybrid-vector-v9"
+EXTERNAL_RANKING_VERSION = "hybrid-external-vector-v10"
 
 
 class SearchService:
@@ -74,7 +74,12 @@ class SearchService:
             if external_requested and self._embedding_service is not None
             else LOCAL_RANKING_VERSION
         )
-        if self._persistence is not None:
+        repository_adjustments = (
+            self._persistence.ranking_adjustments(request.device_id)
+            if self._persistence is not None
+            else {}
+        )
+        if self._persistence is not None and not repository_adjustments:
             cached = self._persistence.load_cached_search(
                 request.query,
                 constraints,
@@ -155,6 +160,7 @@ class SearchService:
             query=" ".join([request.query, *effective_search_terms]),
             semantic_scores=semantic_scores,
             required_search_terms=inferred_search_terms[:2],
+            repository_adjustments=repository_adjustments,
         )
         for result in results:
             result.retrieval_sources = sorted(sources.get(result.full_name, set()))

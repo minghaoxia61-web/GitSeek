@@ -64,6 +64,15 @@ async def override_issue_client():
     yield StubIssueClient()
 
 
+class CountingIssueClient(StubIssueClient):
+    def __init__(self) -> None:
+        self.issue_calls = 0
+
+    async def list_repository_issues(self, *args, **kwargs):
+        self.issue_calls += 1
+        return await super().list_repository_issues(*args, **kwargs)
+
+
 def test_issue_endpoint_returns_only_actionable_work() -> None:
     app.dependency_overrides[get_github_client] = override_issue_client
     try:
@@ -74,3 +83,22 @@ def test_issue_endpoint_returns_only_actionable_work() -> None:
 
     assert response.status_code == 200
     assert response.json()["issues"][0]["number"] == 1
+
+
+def test_issue_endpoint_reuses_recent_cache() -> None:
+    github = CountingIssueClient()
+
+    async def override():
+        yield github
+
+    app.dependency_overrides[get_github_client] = override
+    try:
+        with TestClient(app) as client:
+            first = client.get("/api/v1/repos/example/demo/issues?limit=3")
+            second = client.get("/api/v1/repos/example/demo/issues?limit=3")
+            refreshed = client.get("/api/v1/repos/example/demo/issues?limit=3&refresh=true")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert first.status_code == second.status_code == refreshed.status_code == 200
+    assert github.issue_calls == 2

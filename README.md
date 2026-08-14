@@ -166,10 +166,17 @@ fast path improves recall without waiting for or billing another model. GitHub t
 issued concurrently with bounded 50-item pages;
 repository investigation runs only after the user opens a project dossier.
 
+Common product intents also cover frontend component libraries, desktop applications, WeChat mini
+programs, game development, automation, DevOps, Android, Flutter, Rust GUI, and course projects.
+Device feedback participates in ranking without requiring an account: saved, helpful, and opened-
+Issue signals add a bounded boost, while explicit not-relevant feedback demotes that repository.
+
 Index readiness and freshness are available through `GET /api/v1/index/status`.
 The authenticated daily refresh rotates persistent cursors across Python, TypeScript, JavaScript,
 Java, Go, and Rust popularity shards. A failed shard retains its page for retry, while unchanged
 repository metrics no longer create duplicate historical snapshots.
+High-star shards refresh daily, mid-range shards every few days, and long-tail shards less often.
+Archived records older than 30 days and inactive low-star records older than 90 days are pruned.
 Lightweight process metrics are available through `GET /api/v1/metrics`; responses also include
 `X-Request-ID` and `Server-Timing`. Public search and Agent endpoints use configurable per-IP,
 per-process minute limits and return standard `Retry-After` metadata when saturated.
@@ -245,6 +252,10 @@ Invoke-RestMethod `
 
 User feedback is accepted through `POST /api/v1/feedback`. The web app preserves saved repositories
 on the current device even when the feedback API is temporarily unavailable.
+
+Repository investigations are cached for 12 hours and actionable Issue lists for 30 minutes. A
+manual recheck bypasses those caches. If GitHub reports a rate limit, an older cached dossier can
+still be returned instead of replacing useful evidence with an error.
 
 ## Evaluation
 

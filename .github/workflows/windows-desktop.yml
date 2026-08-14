@@ -7,6 +7,11 @@ on:
         description: Public FastAPI base URL, without a trailing slash
         required: true
         type: string
+      web_app_url:
+        description: Latest hosted GitSeek interface loaded by the installed app
+        required: true
+        default: https://openscout-gitseek.minghaoxia61.chatgpt.site
+        type: string
       app_version:
         description: Application version using MAJOR.MINOR.PATCH
         required: true
@@ -55,7 +60,12 @@ jobs:
         shell: pwsh
         env:
           DESKTOP_API_BASE_URL: ${{ inputs.api_base_url }}
-        run: '"VITE_API_BASE_URL=$env:DESKTOP_API_BASE_URL" | Set-Content apps/web/.env.desktop'
+          DESKTOP_WEB_APP_URL: ${{ inputs.web_app_url }}
+        run: |
+          @(
+            "VITE_API_BASE_URL=$env:DESKTOP_API_BASE_URL"
+            "VITE_REMOTE_APP_URL=$env:DESKTOP_WEB_APP_URL"
+          ) | Set-Content apps/web/.env.desktop
 
       - name: Set application version
         run: pnpm --dir apps/desktop run version:set -- ${{ inputs.app_version }}

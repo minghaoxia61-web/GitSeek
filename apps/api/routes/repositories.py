@@ -26,18 +26,36 @@ async def recommend_contribution_issues(
     client: Annotated[GitHubClient, Depends(get_github_client)],
     session: Annotated[Session, Depends(get_db_session)],
     limit: int = 5,
+    refresh: bool = False,
 ) -> ContributionIssueResponse:
+    bounded_limit = max(1, min(limit, 10))
+    persistence = ProductPersistence(session)
+    if not refresh:
+        cached = persistence.load_cached_issues(
+            f"{owner}/{repo}",
+            limit=bounded_limit,
+        )
+        if cached is not None:
+            return cached
     try:
         response = await ContributionIssueService(client).recommend(
             owner,
             repo,
-            limit=max(1, min(limit, 10)),
+            limit=bounded_limit,
         )
-        ProductPersistence(session).save_issues(response)
+        persistence.save_issues(response)
+        persistence.save_issue_cache(response)
         return response
     except GitHubNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Repository not found") from exc
     except GitHubRateLimitError as exc:
+        stale = persistence.load_cached_issues(
+            f"{owner}/{repo}",
+            limit=bounded_limit,
+            max_age=None,
+        )
+        if stale is not None:
+            return stale
         raise HTTPException(
             status_code=429,
             detail={"message": "GitHub rate limit exceeded", "reset_at": exc.reset_at},
@@ -51,12 +69,24 @@ async def investigate_repository(
     owner: str,
     repo: str,
     client: Annotated[GitHubClient, Depends(get_github_client)],
+    session: Annotated[Session, Depends(get_db_session)],
+    refresh: bool = False,
 ) -> RepositoryInvestigation:
+    persistence = ProductPersistence(session)
+    if not refresh:
+        cached = persistence.load_cached_investigation(f"{owner}/{repo}")
+        if cached is not None:
+            return cached
     try:
-        return await RepositoryInvestigator(client).investigate(owner, repo)
+        response = await RepositoryInvestigator(client).investigate(owner, repo)
+        persistence.save_investigation(response)
+        return response
     except GitHubNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Repository not found") from exc
     except GitHubRateLimitError as exc:
+        stale = persistence.load_cached_investigation(f"{owner}/{repo}", max_age=None)
+        if stale is not None:
+            return stale
         raise HTTPException(
             status_code=429,
             detail={"message": "GitHub rate limit exceeded", "reset_at": exc.reset_at},

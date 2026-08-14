@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from hmac import compare_digest
 from typing import Annotated
 
@@ -24,6 +24,58 @@ REFRESH_QUERIES = [
     for language in REFRESH_LANGUAGES
     for stars in REFRESH_STAR_BANDS
 ]
+REFRESH_INTERVALS = {
+    ">=1000": timedelta(days=1),
+    "100..999": timedelta(days=2),
+    "10..99": timedelta(days=7),
+    "1..9": timedelta(days=14),
+}
+
+
+def _select_refresh_cursors(
+    cursors: list[IndexSyncCursor],
+    *,
+    count: int,
+    now: datetime,
+) -> list[IndexSyncCursor]:
+    def last_success(cursor: IndexSyncCursor) -> datetime | None:
+        value = cursor.last_success_at
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value
+
+    def interval(cursor: IndexSyncCursor) -> timedelta:
+        return next(
+            (
+                duration
+                for band, duration in REFRESH_INTERVALS.items()
+                if f"stars:{band}" in cursor.query
+            ),
+            timedelta(days=7),
+        )
+
+    due = [
+        cursor
+        for cursor in cursors
+        if last_success(cursor) is None or last_success(cursor) <= now - interval(cursor)
+    ]
+    ordered_due = sorted(
+        due,
+        key=lambda cursor: (
+            last_success(cursor) is not None,
+            interval(cursor).total_seconds(),
+            last_success(cursor) or datetime.min.replace(tzinfo=UTC),
+            cursor.id,
+        ),
+    )
+    if len(ordered_due) >= count:
+        return ordered_due[:count]
+    selected_ids = {cursor.id for cursor in ordered_due}
+    fallback = sorted(
+        (cursor for cursor in cursors if cursor.id not in selected_ids),
+        key=lambda cursor: last_success(cursor) or datetime.min.replace(tzinfo=UTC),
+    )
+    return [*ordered_due, *fallback][:count]
 
 
 @router.get("/refresh-index", response_model=IndexRefreshResponse)
@@ -55,14 +107,11 @@ async def refresh_repository_index(
             session.add(cursor)
             cursors[query] = cursor
     session.flush()
-    selected_cursors = sorted(
-        cursors.values(),
-        key=lambda cursor: (
-            cursor.last_success_at is not None,
-            cursor.last_success_at or datetime.min.replace(tzinfo=UTC),
-            cursor.id,
-        ),
-    )[:query_count]
+    selected_cursors = _select_refresh_cursors(
+        list(cursors.values()),
+        count=query_count,
+        now=datetime.now(UTC),
+    )
     selected_queries = [cursor.query for cursor in selected_cursors]
     synchronizer = RepositorySynchronizer(session, client)
     fetched = created = updated = snapshots_created = 0
@@ -96,12 +145,14 @@ async def refresh_repository_index(
         created += stats.created
         updated += stats.updated
         snapshots_created += stats.snapshots_created
+    pruned = synchronizer.prune_stale()
     return IndexRefreshResponse(
         queries=selected_queries,
         fetched=fetched,
         created=created,
         updated=updated,
         snapshots_created=snapshots_created,
+        pruned=pruned,
         failed_queries=failed_queries,
         completed_at=datetime.now(UTC),
     )

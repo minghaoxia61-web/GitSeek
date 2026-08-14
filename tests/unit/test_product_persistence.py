@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
+from packages.domain.feedback import FeedbackRequest
 from packages.domain.models import (
     Base,
     RecommendationRecord,
@@ -82,3 +83,30 @@ def test_search_results_and_repository_snapshot_are_persisted() -> None:
         assert session.scalar(select(func.count(RepositorySnapshot.id))) == 1
         assert session.scalar(select(func.count(SearchSession.id))) == 1
         assert session.scalar(select(func.count(RecommendationRecord.id))) == 1
+
+
+def test_device_feedback_produces_bounded_ranking_adjustments() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as session:
+        persistence = ProductPersistence(session)
+        persistence.save_feedback(
+            FeedbackRequest(
+                repository="example/bad-fit",
+                action="not_relevant",
+                device_id="device-1",
+            )
+        )
+        persistence.save_feedback(
+            FeedbackRequest(
+                repository="example/good-fit",
+                action="helpful",
+                device_id="device-1",
+            )
+        )
+        persistence.save_repository("device-1", "example/good-fit")
+
+        adjustments = persistence.ranking_adjustments("device-1")
+
+    assert adjustments == {"example/bad-fit": -15.0, "example/good-fit": 10.0}

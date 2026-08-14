@@ -1,4 +1,5 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
@@ -96,3 +97,35 @@ def test_sync_skips_duplicate_metric_snapshots() -> None:
     assert first_stats.snapshots_created == 1
     assert second_stats.snapshots_created == 0
     assert snapshot_count == 1
+
+
+def test_prune_removes_only_expired_archived_or_inactive_long_tail_rows() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    now = datetime(2026, 8, 14, tzinfo=UTC)
+
+    with Session(engine) as session:
+        synchronizer = RepositorySynchronizer(session, StubGitHubClient([]))
+        for github_id, name, archived, stars, fetched_days, pushed_days in [
+            (1, "archived", True, 100, 40, 10),
+            (2, "inactive-tail", False, 2, 100, 500),
+            (3, "active-tail", False, 2, 100, 5),
+        ]:
+            repository = _page(stars=stars).result.items[0]
+            repository.id = github_id
+            repository.name = name
+            repository.full_name = f"octocat/{name}"
+            repository.archived = archived
+            repository.pushed_at = now - timedelta(days=pushed_days)
+            synchronizer._upsert(repository, source_etag=None)
+            session.flush()
+            record = session.scalar(select(Repository).where(Repository.github_id == github_id))
+            assert record is not None
+            record.fetched_at = now - timedelta(days=fetched_days)
+        session.commit()
+
+        pruned = synchronizer.prune_stale(now=now)
+        remaining = set(session.scalars(select(Repository.full_name)))
+
+    assert pruned == 2
+    assert remaining == {"octocat/active-tail"}

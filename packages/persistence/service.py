@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from packages.domain.agent import AgentRunRequest, AgentRunResponse
 from packages.domain.contribution import ContributionIssueResponse
 from packages.domain.feedback import FeedbackReceipt, FeedbackRequest, FeedbackSummary
+from packages.domain.investigation import RepositoryInvestigation
 from packages.domain.models import (
     AgentRunRecord,
     AgentStepRecord,
@@ -15,6 +16,7 @@ from packages.domain.models import (
     FeedbackRecord,
     RecommendationRecord,
     Repository,
+    RepositoryDetailCache,
     RepositorySnapshot,
     SavedRepository,
     SearchSession,
@@ -251,7 +253,7 @@ class ProductPersistence:
                     cached_at=_as_utc(cached_session.created_at),
                     embedding_status=(
                         "external"
-                        if cached_session.ranking_version == "hybrid-external-vector-v3"
+                        if cached_session.ranking_version.startswith("hybrid-external-vector-")
                         else "local"
                     ),
                 ),
@@ -378,6 +380,105 @@ class ProductPersistence:
                 else:
                     for key, value in values.items():
                         setattr(record, key, value)
+            self._session.commit()
+            return True
+        except SQLAlchemyError:
+            self._session.rollback()
+            return False
+
+    def load_cached_investigation(
+        self,
+        full_name: str,
+        *,
+        max_age: timedelta | None = timedelta(hours=12),
+    ) -> RepositoryInvestigation | None:
+        try:
+            record = self._session.get(RepositoryDetailCache, full_name)
+            if record is None or not record.investigation_json:
+                return None
+            fetched_at = _as_utc(record.investigation_fetched_at)
+            if max_age is not None and (
+                fetched_at is None or fetched_at < datetime.now(UTC) - max_age
+            ):
+                return None
+            return RepositoryInvestigation.model_validate(record.investigation_json)
+        except (SQLAlchemyError, ValueError):
+            self._session.rollback()
+            return None
+
+    def ranking_adjustments(self, device_id: str | None) -> dict[str, float]:
+        if not device_id:
+            return {}
+        try:
+            adjustments: Counter[str] = Counter()
+            rows = self._session.execute(
+                select(FeedbackRecord.repository, FeedbackRecord.action).where(
+                    FeedbackRecord.device_id == device_id
+                )
+            ).all()
+            weights = {
+                "helpful": 4.0,
+                "saved": 7.0,
+                "opened_issue": 5.0,
+                "not_relevant": -15.0,
+            }
+            for repository, action in rows:
+                adjustments[repository] += weights.get(action, 0.0)
+            for repository in self.list_saved_repositories(device_id) or []:
+                adjustments[repository] += 7.0
+            return {
+                repository: max(-15.0, min(score, 10.0))
+                for repository, score in adjustments.items()
+                if score
+            }
+        except SQLAlchemyError:
+            self._session.rollback()
+            return {}
+
+    def save_investigation(self, response: RepositoryInvestigation) -> bool:
+        try:
+            record = self._session.get(RepositoryDetailCache, response.full_name)
+            if record is None:
+                record = RepositoryDetailCache(repository_full_name=response.full_name)
+                self._session.add(record)
+            record.investigation_json = response.model_dump(mode="json")
+            record.investigation_fetched_at = response.fetched_at
+            self._session.commit()
+            return True
+        except SQLAlchemyError:
+            self._session.rollback()
+            return False
+
+    def load_cached_issues(
+        self,
+        full_name: str,
+        *,
+        limit: int,
+        max_age: timedelta | None = timedelta(minutes=30),
+    ) -> ContributionIssueResponse | None:
+        try:
+            record = self._session.get(RepositoryDetailCache, full_name)
+            if record is None or not record.issues_json:
+                return None
+            fetched_at = _as_utc(record.issues_fetched_at)
+            if max_age is not None and (
+                fetched_at is None or fetched_at < datetime.now(UTC) - max_age
+            ):
+                return None
+            response = ContributionIssueResponse.model_validate(record.issues_json)
+            return response.model_copy(update={"issues": response.issues[:limit]})
+        except (SQLAlchemyError, ValueError):
+            self._session.rollback()
+            return None
+
+    def save_issue_cache(self, response: ContributionIssueResponse) -> bool:
+        try:
+            record = self._session.get(RepositoryDetailCache, response.full_name)
+            if record is None:
+                record = RepositoryDetailCache(repository_full_name=response.full_name)
+                self._session.add(record)
+            record.issues_json = response.model_dump(mode="json")
+            record.issues_fetched_at = response.fetched_at
             self._session.commit()
             return True
         except SQLAlchemyError:
