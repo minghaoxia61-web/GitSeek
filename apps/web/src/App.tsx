@@ -246,7 +246,7 @@ function Shell({
       </aside>
 
       <div className="workspace">
-        <header className="topbar">
+        <header className="topbar glass">
           <div className="breadcrumb"><b>{view === "discover" ? "搜索项目" : view === "saved" ? "我的收藏" : view === "evals" ? "质量记录" : view === "compare" ? "项目对比" : view === "settings" ? "设置" : view === "detail" ? "项目档案" : "搜索结果"}</b></div>
           <div className="top-actions">
             <button className="compare-shortcut" onClick={() => setView("compare")}>对比 {compareCount > 0 && <em>{compareCount}</em>}</button>
@@ -325,7 +325,7 @@ function DiscoverView({ onSearch, initialQuery, initialOptions, history }: { onS
           <p>写下用途、技术和限制。GitSeek 会把不符合的仓库先排除，再说明留下它们的理由。</p>
         </div>
 
-        <form className="search-console" onSubmit={submit}>
+        <form className="search-console card" onSubmit={submit}>
           <div className="console-topline"><span>搜索描述</span><code>PUBLIC REPOSITORIES</code></div>
           <div className="mode-switch" role="tablist" aria-label="搜索模式">
             <button type="button" className={mode === "learn" ? "active" : ""} onClick={() => setMode("learn")}>用于学习</button>
@@ -382,7 +382,7 @@ function ResultCard({
   onDetail: () => void;
 }) {
   return (
-    <article className="result-card">
+    <article className="result-card card">
       <div className="result-main">
         <div className="repo-heading">
           <div><span className="result-rank">{String(repo.rank).padStart(2, "0")}</span><span className="repo-owner">{repo.full_name.split("/")[0]} /</span><h3>{repo.full_name.split("/")[1]}</h3></div>
