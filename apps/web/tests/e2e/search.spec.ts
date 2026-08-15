@@ -105,6 +105,15 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
 
+test("keeps the search question on one line and loads the recent ranking", async ({ page }) => {
+  const title = page.getByRole("heading", { name: "你想找什么项目？" });
+  await expect(title).toHaveCSS("white-space", "nowrap");
+  const trending = page.getByRole("region", { name: "近期热榜" });
+  const rankedRepo = trending.getByRole("button", { name: "查看 fastapi/fastapi 的项目档案" });
+  await expect(rankedRepo).toBeVisible();
+  await expect(rankedRepo.getByText("★ 10万")).toBeVisible();
+});
+
 test("starts empty and renders only real search results", async ({ page }) => {
   const query = page.getByRole("textbox", { name: /描述用途/ });
   await expect(query).toHaveValue("");

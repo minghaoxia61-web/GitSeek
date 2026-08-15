@@ -211,7 +211,7 @@ function Shell({
   compareCount: number;
   savedCount: number;
   hasResults: boolean;
-  detailParent: "results" | "saved";
+  detailParent: "discover" | "results" | "saved";
   connection: ConnectionStatus;
   children: React.ReactNode;
 }) {
@@ -261,7 +261,71 @@ function Shell({
   );
 }
 
-function DiscoverView({ onSearch, initialQuery, initialOptions, history }: { onSearch: (query: string, options: SearchOptions) => Promise<void>; initialQuery: string; initialOptions: SearchOptions; history: SearchHistoryEntry[] }) {
+function TrendingPanel({ onOpen }: { onOpen: (repo: Recommendation) => void }) {
+  const [range, setRange] = useState<7 | 30>(7);
+  const [status, setStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [items, setItems] = useState<Recommendation[]>([]);
+  const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    const since = new Date();
+    since.setDate(since.getDate() - range);
+    setStatus("loading");
+    apiFetch<SearchResponse>("/api/v1/search", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: `近 ${range} 天持续活跃、关注度较高的开源项目`,
+        limit: 6,
+        purpose: "learning",
+        pushed_after: since.toISOString().slice(0, 10),
+        live_query_limit: 1,
+        embedding_mode: "local",
+      }),
+      signal: controller.signal,
+    }).then((response) => {
+      if (!active) return;
+      setItems(response.results.slice(0, 6));
+      setStatus("ready");
+    }).catch(() => {
+      if (!active) return;
+      setItems([]);
+      setStatus("unavailable");
+    });
+    return () => { active = false; controller.abort(); };
+  }, [range, revision]);
+
+  return (
+    <section className="trending-panel" aria-labelledby="trending-title">
+      <div className="trending-head">
+        <div><span className="kicker">GitHub pulse</span><h2 id="trending-title">近期热榜</h2><p>结合最近更新、关注度和仓库信息完整度排序。</p></div>
+        <div className="range-switch" aria-label="热榜时间范围">
+          <button className={range === 7 ? "active" : ""} onClick={() => setRange(7)}>近 7 天</button>
+          <button className={range === 30 ? "active" : ""} onClick={() => setRange(30)}>近 30 天</button>
+        </div>
+      </div>
+      {status === "loading" && <div className="trending-state"><i className="spinner" /> 正在读取 GitHub 公开数据…</div>}
+      {status === "unavailable" && <div className="trending-state trending-state--error"><span>热榜暂时无法更新，搜索功能不受影响。</span><button onClick={() => setRevision((value) => value + 1)}>重新加载</button></div>}
+      {status === "ready" && items.length === 0 && <div className="trending-state">这个时间范围内暂时没有可用结果。</div>}
+      {status === "ready" && items.length > 0 && <div className="trending-list">
+        {items.map((repo, index) => {
+          const [owner, name] = repo.full_name.split("/");
+          return <button className="trending-row" key={repo.full_name} onClick={() => onOpen(repo)} aria-label={`查看 ${repo.full_name} 的项目档案`}>
+            <span className="trending-rank">{String(index + 1).padStart(2, "0")}</span>
+            <span className="trending-repo"><strong>{name}</strong><small>{owner}</small></span>
+            <span className="trending-description">{repo.description || "这个仓库暂时没有提供简介。"}</span>
+            <span className="trending-meta"><span>{repo.language || "多语言"}</span><b>★ {formatNumber(repo.stars)}</b></span>
+            <i>→</i>
+          </button>;
+        })}
+      </div>}
+    </section>
+  );
+}
+
+function DiscoverView({ onSearch, onOpenTrending, initialQuery, initialOptions, history }: { onSearch: (query: string, options: SearchOptions) => Promise<void>; onOpenTrending: (repo: Recommendation) => void; initialQuery: string; initialOptions: SearchOptions; history: SearchHistoryEntry[] }) {
   const [query, setQuery] = useState(initialQuery);
   const [mode, setMode] = useState<"learn" | "contribute">(initialOptions.purpose === "contribution" ? "contribute" : "learn");
   const [advanced, setAdvanced] = useState(false);
@@ -322,8 +386,7 @@ function DiscoverView({ onSearch, initialQuery, initialOptions, history }: { onS
     <div className="page page--discover">
       <section className="hero-grid">
         <div className="hero-copy">
-          <div className="kicker">GitHub / repository finder</div>
-          <h1>你想找什么项目？</h1>
+          <div className="hero-title"><div className="kicker">GitHub / repository finder</div><h1>你想找什么项目？</h1></div>
           <p>写下用途、技术和限制。GitSeek 会把不符合的仓库先排除，再说明留下它们的理由。</p>
         </div>
 
@@ -364,6 +427,7 @@ function DiscoverView({ onSearch, initialQuery, initialOptions, history }: { onS
         <span>也可以从这里开始</span>
         {sampleQueries.map((item) => <button key={item} onClick={() => setQuery(item)}>{item}<i>→</i></button>)}
       </section>
+      <TrendingPanel onOpen={onOpenTrending} />
     </div>
   );
 }
@@ -867,7 +931,7 @@ export default function App() {
   const [view, setView] = useState<View>("discover");
   const [data, setData] = useState<SearchResponse>(() => emptySearchResponse("", DEFAULT_SEARCH_OPTIONS, null));
   const [selectedRepo, setSelectedRepo] = useState<Recommendation | null>(null);
-  const [detailParent, setDetailParent] = useState<"results" | "saved">("results");
+  const [detailParent, setDetailParent] = useState<"discover" | "results" | "saved">("results");
   const [investigation, setInvestigation] = useState<RepositoryInvestigation | null>(null);
   const [investigationStatus, setInvestigationStatus] = useState<"loading" | "ready" | "unavailable">("unavailable");
   const [issues, setIssues] = useState<ContributionIssue[]>([]);
@@ -1131,7 +1195,7 @@ export default function App() {
 
   return (
     <Shell view={view} setView={setView} compareCount={compare.length} savedCount={savedEntries.length} hasResults={Boolean(data.query)} detailParent={detailParent} connection={connection}>
-      {view === "discover" && <DiscoverView onSearch={search} initialQuery={searchDraft.query} initialOptions={searchDraft.options} history={searchHistory} />}
+      {view === "discover" && <DiscoverView onSearch={search} onOpenTrending={(repo) => { setDetailParent("discover"); openDetail(repo); }} initialQuery={searchDraft.query} initialOptions={searchDraft.options} history={searchHistory} />}
       {view === "results" && <ResultsView data={data} agentRun={agentRun} agentProgress={agentProgress} compare={compare} saved={savedEntries.map((item) => item.repository)} toggleCompare={toggleCompare} onSave={(repo) => void (savedEntries.some((item) => item.repository === repo.full_name) ? removeSavedRepository(repo.full_name) : saveRepository(repo))} problem={searchProblem} notice={searchNotice} onCancelAgent={() => agentController.current?.abort()} onNewSearch={() => setView("discover")} onDetail={(repo) => { setDetailParent("results"); openDetail(repo); }} />}
       {view === "saved" && <SavedView entries={savedEntries} onOpen={(repo) => { setDetailParent("saved"); openDetail(repo); }} onRemove={(repository) => void removeSavedRepository(repository)} onDiscover={() => setView("discover")} />}
       {view === "detail" && selectedRepo && <DetailView repo={selectedRepo} investigation={investigation} status={investigationStatus} issues={issues} issueStatus={issueStatus} onBack={() => setView(detailParent)} onCompare={() => toggleCompare(selectedRepo.full_name)} onRefresh={() => refreshDetail(selectedRepo, true)} onFeedback={submitFeedback} />}
