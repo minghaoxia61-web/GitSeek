@@ -45,8 +45,18 @@ class RepositorySynchronizer:
             if not page.result.items:
                 break
 
+            github_ids = [item.id for item in page.result.items]
+            existing_repos = {
+                repo.github_id: repo
+                for repo in self._session.scalars(
+                    select(Repository).where(Repository.github_id.in_(github_ids))
+                )
+            }
+
             for item in page.result.items:
-                was_created = self._upsert(item, source_etag=page.etag)
+                was_created = self._upsert(
+                    item, source_etag=page.etag, existing=existing_repos.get(item.id)
+                )
                 fetched += 1
                 created += int(was_created)
                 updated += int(not was_created)
@@ -55,11 +65,20 @@ class RepositorySynchronizer:
             records = {
                 record.github_id: record
                 for record in self._session.scalars(
-                    select(Repository).where(
-                        Repository.github_id.in_([item.id for item in page.result.items])
-                    )
+                    select(Repository).where(Repository.github_id.in_(github_ids))
                 )
             }
+            repo_ids = [records[item.id].id for item in page.result.items]
+            all_snapshots = self._session.scalars(
+                select(RepositorySnapshot)
+                .where(RepositorySnapshot.repo_id.in_(repo_ids))
+                .order_by(RepositorySnapshot.repo_id, RepositorySnapshot.fetched_at.desc())
+            )
+            latest_metrics_by_repo: dict[int, dict] = {}
+            for snapshot in all_snapshots:
+                if snapshot.repo_id not in latest_metrics_by_repo:
+                    latest_metrics_by_repo[snapshot.repo_id] = snapshot.metrics_json
+
             for item in page.result.items:
                 metrics = {
                     "stars": item.stargazers_count,
@@ -68,12 +87,8 @@ class RepositorySynchronizer:
                     "archived": item.archived,
                     "pushed_at": item.pushed_at.isoformat() if item.pushed_at else None,
                 }
-                latest_metrics = self._session.scalar(
-                    select(RepositorySnapshot.metrics_json)
-                    .where(RepositorySnapshot.repo_id == records[item.id].id)
-                    .order_by(RepositorySnapshot.fetched_at.desc())
-                    .limit(1)
-                )
+                repo_id = records[item.id].id
+                latest_metrics = latest_metrics_by_repo.get(repo_id)
                 if latest_metrics != metrics:
                     self._session.add(
                         RepositorySnapshot(
@@ -91,10 +106,10 @@ class RepositorySynchronizer:
             snapshots_created=snapshots_created,
         )
 
-    def _upsert(self, item: GitHubRepository, *, source_etag: str | None) -> bool:
-        repository = self._session.scalar(
-            select(Repository).where(Repository.github_id == item.id)
-        )
+    def _upsert(
+        self, item: GitHubRepository, *, source_etag: str | None, existing: Repository | None = None
+    ) -> bool:
+        repository = existing
         was_created = repository is None
         if repository is None:
             repository = Repository(

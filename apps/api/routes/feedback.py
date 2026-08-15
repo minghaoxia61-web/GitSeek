@@ -12,7 +12,7 @@ router = APIRouter(prefix="/api/v1/feedback", tags=["feedback"])
 
 
 @router.post("", response_model=FeedbackReceipt, status_code=201)
-async def submit_feedback(
+def submit_feedback(
     request: FeedbackRequest,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> FeedbackReceipt:
@@ -20,7 +20,7 @@ async def submit_feedback(
 
 
 @router.get("/summary", response_model=FeedbackSummary)
-async def get_feedback_summary(
+def get_feedback_summary(
     session: Annotated[Session, Depends(get_db_session)],
 ) -> FeedbackSummary:
     return ProductPersistence(session).feedback_summary() or feedback_store.summary()

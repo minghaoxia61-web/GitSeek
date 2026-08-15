@@ -74,3 +74,10 @@ class SearchResponse(BaseModel):
     ranking_version: str
     results: list[Recommendation]
     retrieval: RetrievalSummary = Field(default_factory=RetrievalSummary)
+
+
+class TrendingResponse(BaseModel):
+    range_days: Literal[7, 30]
+    generated_github_query: str
+    results: list[Recommendation]
+    fetched_at: datetime

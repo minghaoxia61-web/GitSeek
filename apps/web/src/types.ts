@@ -54,6 +54,13 @@ export type SearchResponse = {
   };
 };
 
+export type TrendingResponse = {
+  range_days: 7 | 30;
+  generated_github_query: string;
+  results: Recommendation[];
+  fetched_at: string;
+};
+
 export type AgentStep = {
   node: "parse_query" | "plan_search" | "retrieve_candidates" | "investigate_repositories" | "verify_evidence";
   status: "completed" | "partial" | "failed";

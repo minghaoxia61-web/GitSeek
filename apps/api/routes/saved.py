@@ -11,7 +11,7 @@ router = APIRouter(prefix="/api/v1/saved", tags=["saved repositories"])
 
 
 @router.get("", response_model=SavedRepositoryList)
-async def list_saved_repositories(
+def list_saved_repositories(
     session: Annotated[Session, Depends(get_db_session)],
     device_id: str = Query(min_length=8, max_length=64),
 ) -> SavedRepositoryList:
@@ -25,7 +25,7 @@ async def list_saved_repositories(
 
 
 @router.post("", response_model=SavedRepositoryList, status_code=201)
-async def save_repository(
+def save_repository(
     request: SaveRepositoryRequest,
     session: Annotated[Session, Depends(get_db_session)],
 ) -> SavedRepositoryList:
@@ -42,7 +42,7 @@ async def save_repository(
 
 
 @router.delete("/{owner}/{repo}", response_model=SavedRepositoryList)
-async def delete_saved_repository(
+def delete_saved_repository(
     owner: str,
     repo: str,
     session: Annotated[Session, Depends(get_db_session)],

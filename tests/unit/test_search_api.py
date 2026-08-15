@@ -58,6 +58,59 @@ class StubSearchClient:
         )
 
 
+class StubTrendingClient:
+    def __init__(self) -> None:
+        self.request: dict[str, object] | None = None
+
+    async def search_repositories(
+        self,
+        query: str,
+        *,
+        page: int = 1,
+        per_page: int = 100,
+        etag: str | None = None,
+        sort: str | None = None,
+        order: str = "desc",
+    ) -> GitHubSearchPage:
+        self.request = {
+            "query": query,
+            "page": page,
+            "per_page": per_page,
+            "etag": etag,
+            "sort": sort,
+            "order": order,
+        }
+        return GitHubSearchPage.model_validate(
+            {
+                "result": {
+                    "total_count": 1,
+                    "incomplete_results": False,
+                    "items": [
+                        {
+                            "id": 2,
+                            "name": "popular-project",
+                            "full_name": "example/popular-project",
+                            "owner": {"login": "example"},
+                            "description": "A popular and actively maintained project",
+                            "html_url": "https://github.com/example/popular-project",
+                            "default_branch": "main",
+                            "language": "Python",
+                            "topics": ["open-source"],
+                            "license": {"spdx_id": "MIT"},
+                            "stargazers_count": 50000,
+                            "forks_count": 1000,
+                            "open_issues_count": 20,
+                            "archived": False,
+                            "pushed_at": datetime.now().astimezone().isoformat(),
+                            "created_at": "2020-01-01T00:00:00Z",
+                            "updated_at": datetime.now().astimezone().isoformat(),
+                        }
+                    ],
+                }
+            }
+        )
+
+
 async def override_github_client():
     yield StubSearchClient()
 
@@ -89,6 +142,30 @@ def test_search_endpoint_returns_explainable_baseline() -> None:
     assert payload["eligible_candidate_count"] == 1
     assert payload["results"][0]["full_name"] == "example/fastapi-demo"
     assert payload["results"][0]["constraint_match"]["license"] == "MATCH"
+
+
+def test_trending_endpoint_requests_a_stars_sorted_candidate_pool() -> None:
+    github = StubTrendingClient()
+
+    async def override_trending_client():
+        yield github
+
+    app.dependency_overrides[get_github_client] = override_trending_client
+    try:
+        with TestClient(app) as client:
+            response = client.get("/api/v1/trending?days=7&limit=6")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "public, max-age=300, s-maxage=900"
+    assert github.request is not None
+    assert github.request["sort"] == "stars"
+    assert github.request["order"] == "desc"
+    assert github.request["per_page"] == 100
+    assert "archived:false" in str(github.request["query"])
+    assert "pushed:>" in str(github.request["query"])
+    assert response.json()["results"][0]["full_name"] == "example/popular-project"
 
 
 def test_equivalent_search_uses_recent_database_cache() -> None:

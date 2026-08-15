@@ -5,6 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from apps.api.dependencies import get_db_session, get_github_client
 from packages.domain.index import IndexRefreshResponse
@@ -92,13 +93,14 @@ async def refresh_repository_index(
     if authorization is None or not compare_digest(authorization, expected):
         raise HTTPException(status_code=401, detail="Invalid refresh credential")
 
-    indexed_count = RepositoryIndex(session).status().repository_count
+    indexed_count = (await run_in_threadpool(RepositoryIndex(session).status)).repository_count
     bootstrap = indexed_count < 3_000
     query_count = 4 if bootstrap else 2
     cursors = {
         cursor.query: cursor
-        for cursor in session.scalars(
-            select(IndexSyncCursor).where(IndexSyncCursor.query.in_(REFRESH_QUERIES))
+        for cursor in await run_in_threadpool(
+            session.scalars,
+            select(IndexSyncCursor).where(IndexSyncCursor.query.in_(REFRESH_QUERIES)),
         )
     }
     for query in REFRESH_QUERIES:
@@ -106,7 +108,7 @@ async def refresh_repository_index(
             cursor = IndexSyncCursor(query=query)
             session.add(cursor)
             cursors[query] = cursor
-    session.flush()
+    await run_in_threadpool(session.flush)
     selected_cursors = _select_refresh_cursors(
         list(cursors.values()),
         count=query_count,
@@ -124,14 +126,15 @@ async def refresh_repository_index(
                 start_page=cursor.next_page,
             )
         except GitHubAPIError as exc:
-            session.rollback()
-            cursor = session.scalar(
-                select(IndexSyncCursor).where(IndexSyncCursor.query == cursor.query)
+            await run_in_threadpool(session.rollback)
+            cursor = await run_in_threadpool(
+                session.scalar,
+                select(IndexSyncCursor).where(IndexSyncCursor.query == cursor.query),
             )
             if cursor is not None:
                 cursor.failure_count += 1
                 cursor.last_error = str(exc)[:1000]
-                session.commit()
+                await run_in_threadpool(session.commit)
             failed_queries.append(cursor.query if cursor is not None else "unknown")
             continue
         cursor.next_page = (
@@ -140,12 +143,12 @@ async def refresh_repository_index(
         cursor.last_success_at = utc_now()
         cursor.failure_count = 0
         cursor.last_error = None
-        session.commit()
+        await run_in_threadpool(session.commit)
         fetched += stats.fetched
         created += stats.created
         updated += stats.updated
         snapshots_created += stats.snapshots_created
-    pruned = synchronizer.prune_stale()
+    pruned = await run_in_threadpool(synchronizer.prune_stale)
     return IndexRefreshResponse(
         queries=selected_queries,
         fetched=fetched,

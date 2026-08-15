@@ -53,6 +53,12 @@ async function mockApi(page: Page) {
     json: { repository_count: 0, snapshot_count: 0, freshest_at: null, oldest_at: null, stale_repository_count: 0, expired_repository_count: 0, freshness_state: "empty", next_refresh_at: null, ready: false },
   }));
   await page.route("**/api/v1/saved**", (route) => route.fulfill({ json: { repositories: [] } }));
+  await page.route("**/api/v1/trending**", (route) => route.fulfill({ json: {
+    range_days: 7,
+    generated_github_query: "archived:false pushed:>2026-08-08",
+    results: searchResponse.results,
+    fetched_at: "2026-08-15T00:00:00Z",
+  } }));
   await page.route("**/api/v1/search", (route) => route.fulfill({ json: searchResponse }));
   await page.route("**/api/v1/repos/fastapi/fastapi/investigate", (route) => route.fulfill({ json: {
     full_name: "fastapi/fastapi",
@@ -112,6 +118,11 @@ test("keeps the search question on one line and loads the recent ranking", async
   const rankedRepo = trending.getByRole("button", { name: "查看 fastapi/fastapi 的项目档案" });
   await expect(rankedRepo).toBeVisible();
   await expect(rankedRepo.getByText("★ 10万")).toBeVisible();
+});
+
+test("keeps the discover layout within a medium desktop viewport", async ({ page }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth)).toBe(1024);
 });
 
 test("starts empty and renders only real search results", async ({ page }) => {
