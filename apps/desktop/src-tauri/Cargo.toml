@@ -1,6 +1,6 @@
 [package]
 name = "gitseek"
-version = "0.1.0"
+version = "1.0.0"
 description = "Evidence-backed GitHub project discovery desktop client"
 authors = ["GitSeek contributors"]
 edition = "2021"

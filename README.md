@@ -4,6 +4,35 @@ GitSeek is an evidence-backed GitHub project discovery and contribution assistan
 natural-language goal into explicit constraints, retrieves candidate repositories, applies
 deterministic filters and ranking, and explains every recommendation with source evidence.
 
+[在线体验](https://openscout-gitseek.minghaoxia61.chatgpt.site) ·
+[Windows 下载](https://github.com/minghaoxia61-web/GitSeek/releases/latest) ·
+[需求完成度](docs/requirements-status.md) ·
+[架构说明](docs/architecture.md)
+
+![GitSeek repository discovery interface](docs/images/gitseek-home.png)
+
+## Architecture
+
+```mermaid
+flowchart LR
+    User["Web / PWA / Windows"] --> UI["React discovery interface"]
+    UI --> API["FastAPI application"]
+    API --> Plan["Rules + model-assisted planning"]
+    API --> Retrieve["Local index + GitHub live retrieval"]
+    Plan --> Rank["Deterministic filtering and hybrid ranking"]
+    Retrieve --> Rank
+    Rank --> Evidence["Repository dossier and Issue evidence"]
+    Retrieve --> GitHub["GitHub public API"]
+    Evidence --> GitHub
+    API --> Data["PostgreSQL / Neon persistence"]
+    Rank --> Data
+    Data --> UI
+```
+
+The browser and Windows client share one interface. Search uses the fast deterministic path first,
+then lets the bounded Agent refine interpretation without blocking results. GitHub credentials and
+model credentials remain on the API service and are never packaged into the client.
+
 ## Current milestone
 
 The repository currently contains the first end-to-end product slice:

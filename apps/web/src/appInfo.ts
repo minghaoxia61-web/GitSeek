@@ -1,4 +1,4 @@
-export const APP_VERSION = "0.1.0";
+export const APP_VERSION = "1.0.0";
 export const RELEASES_URL = "https://github.com/minghaoxia61-web/GitSeek/releases";
 
 export type ReleaseCheck = {

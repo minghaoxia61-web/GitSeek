@@ -1,6 +1,9 @@
 name: Build Windows desktop app
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       api_base_url:
@@ -18,7 +21,7 @@ on:
         default: 0.1.0
         type: string
       publish_release:
-        description: Publish installers as a GitHub prerelease
+        description: Publish installers as a stable GitHub Release
         required: true
         default: false
         type: boolean
@@ -59,8 +62,8 @@ jobs:
       - name: Configure public API address
         shell: pwsh
         env:
-          DESKTOP_API_BASE_URL: ${{ inputs.api_base_url }}
-          DESKTOP_WEB_APP_URL: ${{ inputs.web_app_url }}
+          DESKTOP_API_BASE_URL: ${{ inputs.api_base_url || vars.GITSEEK_API_BASE_URL || 'https://git-seek-swart.vercel.app' }}
+          DESKTOP_WEB_APP_URL: ${{ inputs.web_app_url || 'https://openscout-gitseek.minghaoxia61.chatgpt.site' }}
         run: |
           @(
             "VITE_API_BASE_URL=$env:DESKTOP_API_BASE_URL"
@@ -68,7 +71,12 @@ jobs:
           ) | Set-Content apps/web/.env.desktop
 
       - name: Set application version
-        run: pnpm --dir apps/desktop run version:set -- ${{ inputs.app_version }}
+        shell: pwsh
+        env:
+          REQUESTED_VERSION: ${{ inputs.app_version || github.ref_name }}
+        run: |
+          $version = $env:REQUESTED_VERSION.TrimStart("v")
+          pnpm --dir apps/desktop run version:set -- $version
 
       - name: Build NSIS and MSI installers
         shell: pwsh
@@ -110,15 +118,17 @@ jobs:
           path: apps/desktop/src-tauri/target/release/bundle/**
           if-no-files-found: error
 
-      - name: Publish GitHub prerelease
-        if: ${{ inputs.publish_release }}
+      - name: Publish stable GitHub Release
+        if: ${{ github.event_name == 'push' || inputs.publish_release }}
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          APP_VERSION: ${{ inputs.app_version }}
+          REQUESTED_VERSION: ${{ inputs.app_version || github.ref_name }}
         run: |
+          $version = $env:REQUESTED_VERSION.TrimStart("v")
+          $tag = "v$version"
           $bundleRoot = "apps/desktop/src-tauri/target/release/bundle"
-          gh release create "v$env:APP_VERSION" --prerelease --title "GitSeek $env:APP_VERSION" --notes "Windows preview release. Download the NSIS setup executable for normal installation."
+          gh release create $tag --title "GitSeek $version" --generate-notes --notes "GitSeek 的首个稳定版本。普通用户建议下载 NSIS setup.exe；SHA256SUMS.txt 可用于校验文件完整性。"
           Get-ChildItem $bundleRoot -Recurse -File | ForEach-Object {
-            gh release upload "v$env:APP_VERSION" $_.FullName
+            gh release upload $tag $_.FullName --clobber
           }
