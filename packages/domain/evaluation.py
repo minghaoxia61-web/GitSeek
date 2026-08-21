@@ -29,6 +29,14 @@ class EvaluationCategory(BaseModel):
     accuracy: float
 
 
+class EvaluationExperiment(BaseModel):
+    key: str
+    label: str
+    recall_at_10: float
+    ndcg_at_10: float
+    mrr_at_10: float
+
+
 class EvaluationSummary(BaseModel):
     version: str
     dataset_version: str
@@ -37,7 +45,10 @@ class EvaluationSummary(BaseModel):
     retrieval_dataset_version: str | None = None
     retrieval_case_count: int = 0
     relevance_judgment_count: int = 0
+    preference_dataset_version: str | None = None
+    preference_pair_count: int = 0
     metrics: list[EvaluationMetric]
+    experiments: list[EvaluationExperiment] = Field(default_factory=list)
     categories: list[EvaluationCategory] = Field(default_factory=list)
     failures: list[EvaluationFailure] = Field(default_factory=list)
 

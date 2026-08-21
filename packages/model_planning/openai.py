@@ -2,11 +2,13 @@ import json
 import re
 from collections import OrderedDict
 from datetime import UTC, date, datetime, timedelta
+from time import perf_counter
 
 import httpx
 from pydantic import ValidationError
 
 from packages.domain.query_plan import ModelQueryPlan
+from packages.observability import runtime_metrics
 
 _PLAN_CACHE: OrderedDict[tuple[str, str, str], tuple[datetime, ModelQueryPlan]] = OrderedDict()
 _PLAN_CACHE_TTL = timedelta(minutes=15)
@@ -119,11 +121,15 @@ class OpenAIQueryPlanner:
         model: str = "gpt-5.6-luna",
         base_url: str = "https://api.openai.com/v1",
         client: httpx.AsyncClient | None = None,
+        input_cost_per_million: float = 0.0,
+        output_cost_per_million: float = 0.0,
     ) -> None:
         self.model = model
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._client = client
+        self._input_cost_per_million = max(0.0, input_cost_per_million)
+        self._output_cost_per_million = max(0.0, output_cost_per_million)
 
     async def plan(self, query: str, *, today: date | None = None) -> ModelQueryPlan:
         reference_date = today or date.today()
@@ -159,6 +165,10 @@ class OpenAIQueryPlanner:
         }
         owns_client = self._client is None
         client = self._client or httpx.AsyncClient(timeout=12)
+        request_started = perf_counter()
+        request_failed = True
+        input_tokens = 0
+        output_tokens = 0
         try:
             response = await client.post(
                 f"{self._base_url}/responses",
@@ -166,7 +176,12 @@ class OpenAIQueryPlanner:
                 json=payload,
             )
             response.raise_for_status()
-            plan = ModelQueryPlan.model_validate(json.loads(_output_text(response.json())))
+            response_payload = response.json()
+            usage = response_payload.get("usage", {})
+            if isinstance(usage, dict):
+                input_tokens = int(usage.get("input_tokens", 0) or 0)
+                output_tokens = int(usage.get("output_tokens", 0) or 0)
+            plan = ModelQueryPlan.model_validate(json.loads(_output_text(response_payload)))
             plan.language = _clean_term(plan.language) or "Any"
             plan.technologies = [term for item in plan.technologies if (term := _clean_term(item))]
             plan.github_terms = [term for item in plan.github_terms if (term := _clean_term(item))]
@@ -175,6 +190,7 @@ class OpenAIQueryPlanner:
             _PLAN_CACHE.move_to_end(cache_key)
             while len(_PLAN_CACHE) > _PLAN_CACHE_LIMIT:
                 _PLAN_CACHE.popitem(last=False)
+            request_failed = False
             return plan
         except httpx.HTTPStatusError as exc:
             detail = _http_error_detail(exc.response)
@@ -193,5 +209,17 @@ class OpenAIQueryPlanner:
         except TypeError as exc:
             raise ModelPlanningError("model provider returned an unexpected payload") from exc
         finally:
+            estimated_cost = (
+                input_tokens * self._input_cost_per_million
+                + output_tokens * self._output_cost_per_million
+            ) / 1_000_000
+            runtime_metrics.record_external(
+                f"model:{self.model}",
+                duration_ms=(perf_counter() - request_started) * 1000,
+                error=request_failed,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                estimated_cost_usd=estimated_cost,
+            )
             if owns_client:
                 await client.aclose()

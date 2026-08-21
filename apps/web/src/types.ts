@@ -51,6 +51,11 @@ export type SearchResponse = {
     embedding_model?: string | null;
     embedding_cached_repositories?: number;
     embedding_generated_repositories?: number;
+    fusion_strategy?: "rrf" | null;
+    fusion_rank_constant?: number | null;
+    channel_candidate_counts?: Record<string, number>;
+    channel_latency_ms?: Record<string, number>;
+    total_latency_ms?: number | null;
   };
 };
 
@@ -126,6 +131,8 @@ export type EvaluationSummary = {
   retrieval_dataset_version?: string | null;
   retrieval_case_count?: number;
   relevance_judgment_count?: number;
+  preference_dataset_version?: string | null;
+  preference_pair_count?: number;
   generated_at: string;
   metrics: Array<{
     key: string;
@@ -135,6 +142,13 @@ export type EvaluationSummary = {
     target: number;
     passed: boolean;
   }>;
+  experiments?: Array<{
+    key: string;
+    label: string;
+    recall_at_10: number;
+    ndcg_at_10: number;
+    mrr_at_10: number;
+  }>;
   categories?: Array<{
     key: string;
     label: string;
@@ -143,6 +157,33 @@ export type EvaluationSummary = {
     accuracy: number;
   }>;
   failures: Array<{ case_id?: string; category?: string; case: string; expected: string; actual: string }>;
+};
+
+export type DeveloperProfile = {
+  username: string;
+  name: string | null;
+  html_url: string;
+  experience_level: "beginner" | "intermediate" | "advanced";
+  public_repository_count: number;
+  sampled_repository_count: number;
+  languages: Record<string, number>;
+  technologies: string[];
+  limitations: string[];
+};
+
+export type ContributionIssueMatch = ContributionIssue & {
+  fit_score: number;
+  matched_skills: string[];
+  missing_skills: string[];
+  start_checklist: string[];
+};
+
+export type ContributionIssueMatchResponse = {
+  full_name: string;
+  profile: DeveloperProfile;
+  fetched_at: string;
+  issues: ContributionIssueMatch[];
+  limitations: string[];
 };
 
 export type InvestigationEvidence = {

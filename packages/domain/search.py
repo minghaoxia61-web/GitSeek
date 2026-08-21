@@ -62,6 +62,11 @@ class RetrievalSummary(BaseModel):
     embedding_model: str | None = None
     embedding_cached_repositories: int = 0
     embedding_generated_repositories: int = 0
+    fusion_strategy: Literal["rrf"] | None = None
+    fusion_rank_constant: int | None = None
+    channel_candidate_counts: dict[str, int] = Field(default_factory=dict)
+    channel_latency_ms: dict[str, float] = Field(default_factory=dict)
+    total_latency_ms: float | None = None
 
 
 class SearchResponse(BaseModel):

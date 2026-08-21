@@ -196,7 +196,7 @@ async def run_sync(query: str, pages: int) -> SyncStats:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Synchronize GitHub repositories into OpenScout")
+    parser = argparse.ArgumentParser(description="Synchronize GitHub repositories into GitSeek")
     parser.add_argument("--query", default="language:Python archived:false")
     parser.add_argument("--pages", type=int, default=1)
     args = parser.parse_args()

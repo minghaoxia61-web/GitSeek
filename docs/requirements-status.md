@@ -36,6 +36,12 @@ complete only when it has an implemented user path and a repeatable verification
   fallback when persistence is unavailable.
 - Optional OpenAI-compatible external embeddings, durable model-and-content-hash vector caching,
   explicit local fallback, and a repeatable external-versus-local retrieval evaluation endpoint.
+- Reciprocal-rank fusion across local full-text, local semantic, and independent GitHub live-query
+  channels, with per-channel candidate counts and latency diagnostics.
+- Public GitHub developer profiles and evidence-limited user-to-Issue matching with skill matches,
+  missing-evidence labels, fit scores, and an actionable start checklist.
+- A versioned 20-pair preference set, pairwise accuracy, deterministic bootstrap lower bound, and
+  feature ablations that directly changed the production popularity weight.
 - Persisted per-query synchronization cursors, failed-shard recovery, and duplicate snapshot
   suppression for the production repository index.
 - Streaming Agent progress with client cancellation, recent query-plan caching, configurable public
@@ -66,11 +72,11 @@ complete only when it has an implemented user path and a repeatable verification
   distribution signals exist; first maintainer response time still requires timeline-event sampling.
 - Search progress: bounded steps stream while the Agent runs and the browser can cancel background
   refinement; server-side detached job resumption is not yet implemented.
-- Evaluation: a versioned 40-case constraint suite and 100-case curated relevance suite now report
-  Recall@10, nDCG@10, MRR@10, and keyword-versus-vector lift. Pairwise preference accuracy and a
-  second-annotator review are still absent.
-- Observability: Agent traces, durations, request IDs, server timing, and lightweight path metrics
-  exist; token cost and version-trend dashboards are not complete.
+- Evaluation: a versioned 40-case constraint suite, 100-case curated relevance suite, and 20-pair
+  preference set report Recall@10, nDCG@10, MRR@10, pairwise accuracy, bootstrap bounds, and feature
+  ablations. Independent second-annotator review is still absent.
+- Observability: Agent traces, request IDs, server timing, path P50/P95 and error rates, plus model
+  and embedding call/token/configured-cost metrics exist; version-trend dashboards are not complete.
 - Reliability: model and GitHub degradation and per-process public rate limiting are visible;
   distributed rate limiting and broader fault injection remain.
 
@@ -80,7 +86,8 @@ complete only when it has an implemented user path and a repeatable verification
 - Redis-backed task queue and a dedicated long-running scheduler service.
 - README/CONTRIBUTING section embeddings and pgvector recall.
 - MLflow experiment tracking and the required ablation suite.
-- GitHub OAuth personalization, profile export, and profile deletion.
+- GitHub OAuth personalization, private-activity access, profile export, and profile deletion. The
+  current matcher deliberately uses only public profile data and requires no account.
 - Learning-to-rank training and personalized reranking.
 - Admin sync API with authentication.
 - Production-like 150-case evaluation gate; the current E2E suite covers core desktop/mobile search
@@ -89,7 +96,7 @@ complete only when it has an implemented user path and a repeatable verification
 
 ## Recommended implementation order
 
-1. Add second-annotator review and pairwise preference accuracy to the relevance suite.
-2. Add first-response timing from Issue/PR timeline events.
-3. Expand production fault-injection checks and distributed rate limiting.
-4. Optionally compare an external embedding provider when a deployment already has one.
+1. Add second-annotator review to the relevance and preference suites.
+2. Capture timestamped per-channel rankings so RRF lift can be evaluated offline.
+3. Add first-response timing from Issue/PR timeline events.
+4. Expand production fault-injection checks and distributed rate limiting.

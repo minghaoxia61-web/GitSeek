@@ -1,0 +1,26 @@
+{
+  "version": "retrieval-pairs-v1",
+  "annotation_status": "single-curator",
+  "pairs": [
+    {"id":"fastapi-01","query":"学习 FastAPI 框架源码","preferred":"fastapi/fastapi","rejected":"pallets/flask"},
+    {"id":"fastapi-02","query":"FastAPI PostgreSQL 全栈模板","preferred":"fastapi/full-stack-fastapi-template","rejected":"pallets/flask"},
+    {"id":"django-01","query":"参与 Django Web 框架贡献","preferred":"django/django","rejected":"pallets/flask"},
+    {"id":"django-02","query":"Django CMS 内容管理项目","preferred":"wagtail/wagtail","rejected":"pallets/flask"},
+    {"id":"cli-01","query":"Python 类型安全 CLI 框架","preferred":"fastapi/typer","rejected":"Textualize/rich"},
+    {"id":"cli-02","query":"Python 命令行参数解析工具","preferred":"pallets/click","rejected":"Textualize/rich"},
+    {"id":"data-01","query":"Python DataFrame 数据分析项目","preferred":"pandas-dev/pandas","rejected":"numpy/numpy"},
+    {"id":"data-02","query":"高性能 DataFrame Rust Python","preferred":"pola-rs/polars","rejected":"numpy/numpy"},
+    {"id":"ml-01","query":"NLP transformer 模型仓库","preferred":"huggingface/transformers","rejected":"numpy/numpy"},
+    {"id":"ml-02","query":"机器学习算法库 Python","preferred":"scikit-learn/scikit-learn","rejected":"numpy/numpy"},
+    {"id":"test-01","query":"Python 测试框架源码","preferred":"pytest-dev/pytest","rejected":"django/django"},
+    {"id":"test-02","query":"property based testing Python","preferred":"HypothesisWorks/hypothesis","rejected":"django/django"},
+    {"id":"http-01","query":"Python 异步 HTTP 客户端 httpx","preferred":"encode/httpx","rejected":"psf/requests"},
+    {"id":"http-02","query":"aiohttp asyncio web client","preferred":"aio-libs/aiohttp","rejected":"psf/requests"},
+    {"id":"workflow-01","query":"数据管道工作流调度平台","preferred":"apache/airflow","rejected":"celery/celery"},
+    {"id":"workflow-02","query":"现代 Python workflow orchestration","preferred":"PrefectHQ/prefect","rejected":"celery/celery"},
+    {"id":"orm-01","query":"Python ORM SQL toolkit","preferred":"sqlalchemy/sqlalchemy","rejected":"django/django"},
+    {"id":"scraping-01","query":"Python 网页爬虫框架","preferred":"scrapy/scrapy","rejected":"psf/requests"},
+    {"id":"scraping-02","query":"网页抓取 HTTP 请求工具","preferred":"psf/requests","rejected":"encode/httpx"},
+    {"id":"scraping-03","query":"异步网络客户端而不是爬虫框架","preferred":"encode/httpx","rejected":"scrapy/scrapy"}
+  ]
+}

@@ -1,2 +1,1 @@
-"""Shared OpenScout packages."""
-
+"""Shared GitSeek packages."""

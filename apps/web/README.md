@@ -1,6 +1,6 @@
-# OpenScout Web
+# GitSeek Web
 
-OpenScout Web is the product interface for evidence-backed GitHub repository discovery. It is a
+GitSeek Web is the product interface for evidence-backed GitHub repository discovery. It is a
 React and Vite application with a dense repository-intelligence visual system.
 
 ## Product surfaces

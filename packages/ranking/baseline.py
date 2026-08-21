@@ -74,6 +74,8 @@ def _score(
     now: datetime,
     query: str | None = None,
     external_similarity: float | None = None,
+    retrieval_fusion: float | None = None,
+    disabled_features: set[str] | None = None,
 ) -> tuple[float, dict[str, float]]:
     corpus = " ".join(
         [
@@ -108,7 +110,9 @@ def _score(
         age_days = max((now - pushed_at).days, 0)
         activity = max(30.0 * math.exp(-age_days / 180), 0.0)
 
-    popularity = min(math.log10(repository.stargazers_count + 1) / 5, 1.0) * 15.0
+    # Stars remain a weak trust signal, not a proxy for query relevance. The v1 ablation showed
+    # that a 15-point popularity feature reduced nDCG@10, so the production weight is capped at 5.
+    popularity = min(math.log10(repository.stargazers_count + 1) / 5, 1.0) * 5.0
     metadata_fields = [
         repository.description,
         repository.topics,
@@ -125,6 +129,11 @@ def _score(
         "metadata": round(metadata, 2),
         "license": round(license_score, 2),
     }
+    if retrieval_fusion is not None:
+        breakdown["retrieval_fusion"] = round(max(0.0, min(15.0, retrieval_fusion)), 2)
+    for feature in disabled_features or set():
+        if feature in breakdown:
+            breakdown[feature] = 0.0
     return round(sum(breakdown.values()), 2), breakdown
 
 
@@ -138,9 +147,12 @@ def rank_repositories(
     semantic_scores: dict[str, float] | None = None,
     required_search_terms: list[str] | None = None,
     repository_adjustments: dict[str, float] | None = None,
+    retrieval_scores: dict[str, float] | None = None,
+    disabled_features: set[str] | None = None,
 ) -> tuple[list[Recommendation], int]:
     reference_time = now or datetime.now(UTC)
     scored: list[tuple[GitHubRepository, float, dict[str, float], dict[str, str]]] = []
+    max_retrieval_score = max((retrieval_scores or {}).values(), default=0.0)
 
     for repository in repositories:
         matches = _constraint_matches(repository, constraints)
@@ -157,6 +169,13 @@ def rank_repositories(
             reference_time,
             query,
             (semantic_scores or {}).get(repository.full_name),
+            (
+                15.0 * (retrieval_scores or {}).get(repository.full_name, 0.0)
+                / max_retrieval_score
+                if max_retrieval_score > 0
+                else None
+            ),
+            disabled_features,
         )
         if required_search_terms:
             primary_term = required_search_terms[0].casefold().replace("-", " ")

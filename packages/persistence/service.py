@@ -253,7 +253,7 @@ class ProductPersistence:
                     cached_at=_as_utc(cached_session.created_at),
                     embedding_status=(
                         "external"
-                        if cached_session.ranking_version.startswith("hybrid-external-vector-")
+                        if cached_session.ranking_version.startswith("hybrid-external-")
                         else "local"
                     ),
                 ),

@@ -3,8 +3,8 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "openscout"
-version = "0.1.0"
+name = "gitseek"
+version = "1.0.0"
 description = "Evidence-backed GitHub project discovery and contribution assistant"
 readme = "README.md"
 requires-python = ">=3.12"

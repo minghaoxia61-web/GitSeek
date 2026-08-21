@@ -68,6 +68,7 @@ export function ResultsView({
           {data.constraints.platform && <span>{data.constraints.platform}</span>}
         </div>
         {agentRun && <details className="search-trace"><summary>查看搜索过程</summary><p>{agentRun.interpretation.summary}</p><p>语义排序：{data.retrieval?.embedding_status === "external" ? data.retrieval.embedding_model || "外部向量模型" : "本地向量模型"}</p>{agentRun.steps.map((step) => <span key={step.node}><Signal tone={step.status === "completed" ? "green" : "amber"} />{step.summary}<small>{step.duration_ms}ms</small></span>)}</details>}
+        {data.retrieval?.fusion_strategy && <details className="search-trace"><summary>查看检索诊断</summary><p>排序版本：{data.ranking_version} · {data.retrieval.fusion_strategy.toUpperCase()} 融合 · k={data.retrieval.fusion_rank_constant}</p>{Object.entries(data.retrieval.channel_candidate_counts ?? {}).map(([channel, count]) => <span key={channel}><Signal /><span>{channel}</span><small>{count} 个候选 · {data.retrieval?.channel_latency_ms?.[channel.replace(/_\d+$/, "")] ?? "—"}ms</small></span>)}<p>端到端检索耗时：{data.retrieval.total_latency_ms ?? "—"}ms</p></details>}
       </section>}
 
       {!problem && data.results.length === 0 && <section className="result-state result-state--empty"><span className="empty-mark">0</span><div><small>NO MATCHES</small><h2>这次没有项目通过全部条件</h2><p>GitHub 已完成检索，但语言、许可证、更新时间或规模条件组合后没有留下候选。可以先去掉一到两个硬条件再试。</p><button className="primary-button" onClick={onNewSearch}>放宽搜索条件</button></div></section>}

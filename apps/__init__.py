@@ -1,2 +1,1 @@
-"""OpenScout deployable applications."""
-
+"""GitSeek deployable applications."""

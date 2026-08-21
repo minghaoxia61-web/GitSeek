@@ -7,6 +7,17 @@ class GitHubOwner(BaseModel):
     login: str
 
 
+class GitHubUser(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    login: str
+    name: str | None = None
+    bio: str | None = None
+    html_url: str
+    public_repos: int = 0
+    followers: int = 0
+
+
 class GitHubLicense(BaseModel):
     spdx_id: str | None = None
 

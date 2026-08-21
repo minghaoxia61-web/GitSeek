@@ -1,2 +1,1 @@
-"""OpenScout background workers."""
-
+"""GitSeek background workers."""

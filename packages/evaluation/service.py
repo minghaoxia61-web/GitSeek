@@ -1,5 +1,6 @@
 import json
 import math
+import random
 from collections import defaultdict
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -7,6 +8,7 @@ from typing import Any
 
 from packages.domain.evaluation import (
     EvaluationCategory,
+    EvaluationExperiment,
     EvaluationFailure,
     EvaluationMetric,
     EvaluationSummary,
@@ -17,6 +19,7 @@ from packages.retrieval import parse_search_constraints
 
 DATASET_PATH = Path(__file__).parent / "datasets" / "parser-constraints-v2.json"
 RETRIEVAL_DATASET_PATH = Path(__file__).parent / "datasets" / "retrieval-relevance-v1.json"
+PREFERENCE_DATASET_PATH = Path(__file__).parent / "datasets" / "retrieval-pairs-v1.json"
 CATEGORY_LABELS = {
     "language": "编程语言",
     "technology": "技术栈",
@@ -39,7 +42,25 @@ def _load_retrieval_dataset() -> dict[str, Any]:
         return json.load(dataset_file)
 
 
-def _retrieval_metrics() -> tuple[dict[str, float], str, int, int]:
+def _load_preference_dataset() -> dict[str, Any]:
+    with PREFERENCE_DATASET_PATH.open(encoding="utf-8") as dataset_file:
+        return json.load(dataset_file)
+
+
+def _bootstrap_lower_bound(values: list[float], *, samples: int = 1000) -> float:
+    """Return a deterministic 95% bootstrap lower bound for the mean."""
+
+    if not values:
+        return 0.0
+    generator = random.Random(20260821)
+    means = sorted(
+        sum(generator.choice(values) for _ in values) / len(values)
+        for _ in range(samples)
+    )
+    return means[max(0, int(samples * 0.025) - 1)]
+
+
+def _retrieval_metrics() -> tuple[dict[str, float], str, int, int, str, int]:
     dataset = _load_retrieval_dataset()
     reference_date = date.fromisoformat(dataset["reference_date"])
     reference_time = datetime.combine(reference_date, datetime.min.time(), tzinfo=UTC)
@@ -68,7 +89,11 @@ def _retrieval_metrics() -> tuple[dict[str, float], str, int, int]:
             )
         )
 
-    def evaluate(*, semantic: bool) -> tuple[dict[str, float], int]:
+    def evaluate(
+        *,
+        semantic: bool,
+        disabled_features: set[str] | None = None,
+    ) -> tuple[dict[str, float], int, list[float]]:
         recalls: list[float] = []
         ndcgs: list[float] = []
         reciprocal_ranks: list[float] = []
@@ -111,6 +136,7 @@ def _retrieval_metrics() -> tuple[dict[str, float], str, int, int]:
                     limit=10,
                     now=reference_time,
                     query=query if semantic else None,
+                    disabled_features=disabled_features,
                 )
                 names = [item.full_name for item in ranked]
                 recalls.append(len(relevant.intersection(names)) / len(relevant))
@@ -135,17 +161,61 @@ def _retrieval_metrics() -> tuple[dict[str, float], str, int, int]:
                 ),
             },
             case_count,
+            ndcgs,
         )
 
-    keyword_metrics, case_count = evaluate(semantic=False)
-    metrics, _ = evaluate(semantic=True)
+    keyword_metrics, case_count, _ = evaluate(semantic=False)
+    metrics, _, ndcg_samples = evaluate(semantic=True)
+    no_popularity_metrics, _, _ = evaluate(
+        semantic=True,
+        disabled_features={"popularity"},
+    )
+    no_activity_metrics, _, _ = evaluate(
+        semantic=True,
+        disabled_features={"activity"},
+    )
     metrics["keyword_ndcg_at_10"] = keyword_metrics["ndcg_at_10"]
     metrics["ndcg_lift"] = round(
         metrics["ndcg_at_10"] - keyword_metrics["ndcg_at_10"],
         1,
     )
+    metrics["ndcg_95ci_lower"] = round(_bootstrap_lower_bound(ndcg_samples) * 100, 1)
+
+    preference_dataset = _load_preference_dataset()
+    preferred_first = 0
+    for pair in preference_dataset["pairs"]:
+        constraints = parse_search_constraints(pair["query"], today=reference_date)
+        ranked, _ = rank_repositories(
+            repositories,
+            constraints,
+            limit=len(repositories),
+            now=reference_time,
+            query=pair["query"],
+        )
+        positions = {item.full_name: position for position, item in enumerate(ranked, start=1)}
+        preferred_position = positions.get(pair["preferred"], math.inf)
+        rejected_position = positions.get(pair["rejected"], math.inf)
+        if preferred_position < rejected_position:
+            preferred_first += 1
+    pair_count = len(preference_dataset["pairs"])
+    metrics["pairwise_accuracy"] = round(preferred_first / pair_count * 100, 1)
+    metrics["ablations"] = {
+        "metadata_only": keyword_metrics,
+        "full_reranker": {
+            key: metrics[key] for key in ("recall_at_10", "ndcg_at_10", "mrr_at_10")
+        },
+        "without_popularity": no_popularity_metrics,
+        "without_activity": no_activity_metrics,
+    }
     judgment_count = case_count * len(repositories)
-    return metrics, dataset["version"], case_count, judgment_count
+    return (
+        metrics,
+        dataset["version"],
+        case_count,
+        judgment_count,
+        preference_dataset["version"],
+        pair_count,
+    )
 
 
 def _display(value: Any) -> str:
@@ -207,7 +277,14 @@ def build_evaluation_summary() -> EvaluationSummary:
         )
         for key, counts in category_counts.items()
     ]
-    retrieval, retrieval_version, retrieval_cases, judgments = _retrieval_metrics()
+    (
+        retrieval,
+        retrieval_version,
+        retrieval_cases,
+        judgments,
+        preference_version,
+        preference_pairs,
+    ) = _retrieval_metrics()
     return EvaluationSummary(
         version="parser-rules-v3",
         dataset_version=dataset["version"],
@@ -216,6 +293,8 @@ def build_evaluation_summary() -> EvaluationSummary:
         retrieval_dataset_version=retrieval_version,
         retrieval_case_count=retrieval_cases,
         relevance_judgment_count=judgments,
+        preference_dataset_version=preference_version,
+        preference_pair_count=preference_pairs,
         metrics=[
             EvaluationMetric(
                 key="constraint_accuracy",
@@ -273,6 +352,35 @@ def build_evaluation_summary() -> EvaluationSummary:
                 target=5.0,
                 passed=retrieval["ndcg_lift"] >= 5.0,
             ),
+            EvaluationMetric(
+                key="ndcg_95ci_lower",
+                label="nDCG@10 95% CI 下界",
+                value=retrieval["ndcg_95ci_lower"],
+                unit="%",
+                target=75.0,
+                passed=retrieval["ndcg_95ci_lower"] >= 75.0,
+            ),
+            EvaluationMetric(
+                key="pairwise_accuracy",
+                label="成对偏好准确率",
+                value=retrieval["pairwise_accuracy"],
+                unit="%",
+                target=80.0,
+                passed=retrieval["pairwise_accuracy"] >= 80.0,
+            ),
+        ],
+        experiments=[
+            EvaluationExperiment(
+                key=key,
+                label={
+                    "metadata_only": "仅元数据基线",
+                    "full_reranker": "完整特征重排",
+                    "without_popularity": "移除热度特征",
+                    "without_activity": "移除活跃度特征",
+                }[key],
+                **values,
+            )
+            for key, values in retrieval["ablations"].items()
         ],
         categories=categories,
         failures=failures,

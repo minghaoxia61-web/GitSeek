@@ -1,6 +1,7 @@
 import { useState } from "react";
 
-import type { ContributionIssue, Recommendation, RepositoryInvestigation } from "../types";
+import { apiFetch } from "../api";
+import type { ContributionIssue, ContributionIssueMatchResponse, Recommendation, RepositoryInvestigation } from "../types";
 import { formatNumber } from "../lib/utils";
 import { DataFreshness, ScoreDial, Signal } from "../components/ui";
 
@@ -27,6 +28,9 @@ export function DetailView({
 }) {
   const [feedbackMessage, setFeedbackMessage] = useState("");
   const [showFeedbackReasons, setShowFeedbackReasons] = useState(false);
+  const [githubUsername, setGithubUsername] = useState("");
+  const [matchStatus, setMatchStatus] = useState<"idle" | "loading" | "ready" | "unavailable">("idle");
+  const [issueMatches, setIssueMatches] = useState<ContributionIssueMatchResponse | null>(null);
   const scores = investigation?.scores;
   const dossierScore = scores
     ? (scores.documentation + scores.engineering + scores.learning_friendliness + (scores.maintenance ?? scores.community_health)) / 4
@@ -75,6 +79,21 @@ export function DetailView({
     await onFeedback(action, reason);
     setShowFeedbackReasons(false);
     setFeedbackMessage(action === "helpful" ? "已记录：推荐有帮助" : action === "saved" ? "已收藏到当前设备" : "已记录，我们会把它作为失败样本检查");
+  }
+
+  async function matchIssues() {
+    const username = githubUsername.trim().replace(/^@/, "");
+    if (!username) return;
+    const [owner, name] = repo.full_name.split("/", 2);
+    setMatchStatus("loading");
+    try {
+      const result = await apiFetch<ContributionIssueMatchResponse>(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issue-matches/${encodeURIComponent(username)}?limit=5`);
+      setIssueMatches(result);
+      setMatchStatus("ready");
+    } catch {
+      setIssueMatches(null);
+      setMatchStatus("unavailable");
+    }
   }
 
   return (
@@ -146,6 +165,15 @@ export function DetailView({
               <div><span>PR 处理</span><strong>{activity?.median_pull_request_resolution_hours != null ? `${Math.round(activity.median_pull_request_resolution_hours / 24)} 天` : "未知"}</strong><small>{activity?.merged_pull_request_ratio != null ? `${Math.round(activity.merged_pull_request_ratio * 100)}% 样本已合并` : `${activity?.pull_requests_sampled ?? 0} 个关闭 PR 样本`}</small></div>
               <div><span>贡献连续性</span><strong>{activity?.contributor_continuity === "distributed" ? "较分散" : activity?.contributor_continuity === "concentrated" ? "较集中" : "未知"}</strong><small>{activity?.contributors_sampled ? `${activity.contributors_sampled} 位贡献者样本` : "样本不足"}</small></div>
             </div>
+          </article>
+
+          <article className="panel issues-panel">
+            <div className="panel-title"><span>匹配到你的公开经历</span><small>无需登录，只读取公开仓库</small></div>
+            <div className="profile-match-form"><input value={githubUsername} onChange={(event) => setGithubUsername(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void matchIssues(); }} placeholder="GitHub 用户名，例如 octocat" aria-label="GitHub 用户名" /><button className="secondary-button" onClick={() => void matchIssues()} disabled={!githubUsername.trim() || matchStatus === "loading"}>{matchStatus === "loading" ? "正在匹配…" : "匹配 Issue"}</button></div>
+            {matchStatus === "unavailable" && <p className="empty-copy">未能读取该用户或 GitHub 当前限流，请检查用户名后重试。</p>}
+            {issueMatches && <div className="profile-match-summary"><p><b>{issueMatches.profile.name || `@${issueMatches.profile.username}`}</b> · {issueMatches.profile.experience_level === "advanced" ? "公开经历丰富" : issueMatches.profile.experience_level === "intermediate" ? "有一定公开项目经历" : "公开项目较少"}</p><small>主要语言：{Object.keys(issueMatches.profile.languages).join("、") || "证据不足"} · 已分析 {issueMatches.profile.sampled_repository_count} 个公开仓库</small></div>}
+            {issueMatches?.issues.map((issue) => <a className="issue-row" href={issue.html_url} target="_blank" rel="noreferrer" key={`match-${issue.number}`} onClick={() => onFeedback("opened_issue")}><span className={`difficulty ${issue.difficulty}`}>适配 {issue.fit_score.toFixed(0)}</span><div><b>#{issue.number} {issue.title}</b><p>{issue.matched_skills.length ? `匹配：${issue.matched_skills.join("、")}` : "公开仓库中暂未发现直接匹配技能"}{issue.missing_skills.length ? `；待确认：${issue.missing_skills.join("、")}` : ""}</p></div><strong>{issue.fit_score.toFixed(0)}</strong></a>)}
+            {issueMatches && !issueMatches.issues.length && <p className="empty-copy">当前没有未认领且可可靠匹配的开放 Issue。</p>}
           </article>
 
           <article className="panel issues-panel">

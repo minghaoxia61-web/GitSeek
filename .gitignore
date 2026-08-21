@@ -14,5 +14,8 @@ build/
 .docx-review/
 .migration-check/
 .run/
+.qoder/
+.workbuddy/
+.trae-html-share-packages/
 apps/desktop/node_modules/
 apps/desktop/src-tauri/target/

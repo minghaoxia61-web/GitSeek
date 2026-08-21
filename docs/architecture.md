@@ -48,17 +48,24 @@ The searchable vertical slice uses a deterministic hybrid pipeline:
 
 ```text
 Chinese query -> rule-based constraints + free bilingual term expansion
-                                      -> local full-text index + GitHub live search
+                                      -> local full-text + local semantic + GitHub live queries
                                               |
                                               v
-                                  merge/dedupe -> hard filters -> metadata score -> Top 10
+                                  reciprocal-rank fusion (RRF)
+                                              |
+                                              v
+                                  hard filters -> feature reranking -> Top 10
 ```
 
 Language, license, archive state, and activity date are hard constraints. A candidate with missing
 or conflicting evidence is excluded instead of letting a soft relevance score override the user's
 request. The ranking score uses only fields returned by repository search and labels itself
-`hybrid-vector-v9`; it blends deterministic metadata scoring with a cached local semantic vector and
+`hybrid-rrf-v11`; it blends deterministic metadata scoring with a cached local semantic vector and
 does not claim that README, tests, or contribution instructions exist before investigation.
+Each recall channel keeps its own ordering. Reciprocal-rank fusion combines those orderings without
+pretending that PostgreSQL relevance, local cosine similarity, and GitHub Search expose comparable
+raw scores. The API reports per-channel candidate counts, latency, the fusion constant, and total
+retrieval latency so ranking changes remain inspectable.
 Common intents are expanded locally into up to three GitHub terms before live retrieval. This keeps
 the deterministic fast path precise without an LLM or external embeddings request; model-planned
 terms can still replace those expansions during the optional refinement path.
@@ -69,7 +76,7 @@ Agent searches may request an external semantic ranker. Query and repository tex
 batches through an OpenAI-compatible embeddings endpoint, then blended with the same deterministic
 metadata score. Repository vectors are stored by model and content hash; only new or changed content
 is embedded again. Provider errors never bypass hard filters: the request falls back to
-`hybrid-vector-v9`, while successful external ranking is identified as `hybrid-external-vector-v10`.
+`hybrid-rrf-v11`, while successful external ranking is identified as `hybrid-external-rrf-v12`.
 The language model planner and embedding provider use separate credentials and endpoints.
 
 ## On-demand repository investigation

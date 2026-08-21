@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from apps.api.dependencies import get_db_session, get_github_client
 from packages.contribution import ContributionIssueService
-from packages.domain.contribution import ContributionIssueResponse
+from packages.domain.contribution import ContributionIssueMatchResponse, ContributionIssueResponse
 from packages.domain.investigation import RepositoryInvestigation
 from packages.github_client import (
     GitHubAPIError,
@@ -17,6 +17,35 @@ from packages.investigation import RepositoryInvestigator
 from packages.persistence import ProductPersistence
 
 router = APIRouter(prefix="/api/v1/repos", tags=["repositories"])
+
+
+@router.get(
+    "/{owner}/{repo}/issue-matches/{username}",
+    response_model=ContributionIssueMatchResponse,
+)
+async def match_contribution_issues(
+    owner: str,
+    repo: str,
+    username: str,
+    client: Annotated[GitHubClient, Depends(get_github_client)],
+    limit: int = 5,
+) -> ContributionIssueMatchResponse:
+    try:
+        return await ContributionIssueService(client).match_for_user(
+            owner,
+            repo,
+            username,
+            limit=max(1, min(limit, 10)),
+        )
+    except GitHubNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Repository or GitHub user not found") from exc
+    except GitHubRateLimitError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail={"message": "GitHub rate limit exceeded", "reset_at": exc.reset_at},
+        ) from exc
+    except GitHubAPIError as exc:
+        raise HTTPException(status_code=502, detail="GitHub profile matching failed") from exc
 
 
 @router.get("/{owner}/{repo}/issues", response_model=ContributionIssueResponse)

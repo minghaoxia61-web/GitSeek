@@ -18,12 +18,24 @@ def test_evaluation_endpoint_reports_real_parser_run() -> None:
     assert payload["retrieval_dataset_version"] == "retrieval-relevance-v1"
     assert payload["retrieval_case_count"] == 100
     assert payload["relevance_judgment_count"] == 2300
+    assert payload["preference_dataset_version"] == "retrieval-pairs-v1"
+    assert payload["preference_pair_count"] == 20
     metrics = {item["key"]: item for item in payload["metrics"]}
     assert metrics["recall_at_10"]["value"] >= 85
     assert metrics["ndcg_at_10"]["value"] >= 75
     assert metrics["mrr_at_10"]["value"] >= 80
     assert metrics["ndcg_at_10"]["value"] >= metrics["keyword_ndcg_at_10"]["value"]
     assert metrics["ndcg_lift"]["value"] >= 0
+    assert metrics["ndcg_95ci_lower"]["value"] >= 75
+    assert metrics["pairwise_accuracy"]["value"] >= 80
+    experiments = {item["key"]: item for item in payload["experiments"]}
+    assert set(experiments) == {
+        "metadata_only",
+        "full_reranker",
+        "without_popularity",
+        "without_activity",
+    }
+    assert experiments["full_reranker"]["ndcg_at_10"] >= experiments["metadata_only"]["ndcg_at_10"]
 
 
 def test_external_embedding_evaluation_reports_unconfigured_provider() -> None:

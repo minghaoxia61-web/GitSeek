@@ -570,3 +570,8 @@ main { min-width: 0; }
   .page-heading--row .primary-button { margin-top: 18px; }
   .metric-grid { grid-template-columns: repeat(2, 1fr); }
 }
+.profile-match-form { display: flex; gap: 10px; margin: 16px 0; }
+.profile-match-form input { flex: 1; min-width: 0; border: 1px solid var(--border, #d9d9df); border-radius: 10px; padding: 12px 14px; background: transparent; color: inherit; font: inherit; }
+.profile-match-summary { margin: 12px 0; padding: 14px; border-radius: 10px; background: rgba(0, 113, 227, .06); }
+.profile-match-summary p { margin: 0 0 4px; }
+.profile-match-summary small { color: var(--muted, #68686f); }

@@ -4,12 +4,48 @@ GitSeek is an evidence-backed GitHub project discovery and contribution assistan
 natural-language goal into explicit constraints, retrieves candidate repositories, applies
 deterministic filters and ranking, and explains every recommendation with source evidence.
 
+Unlike a thin LLM search wrapper, GitSeek keeps hard constraints and factual verification in
+application code. Model-assisted planning is optional, bounded, and observable; the same workflow
+continues through a deterministic fallback when a model or external embedding provider is absent.
+
 [在线体验](https://openscout-gitseek.minghaoxia61.chatgpt.site) ·
 [Windows 下载](https://github.com/minghaoxia61-web/GitSeek/releases/latest) ·
 [需求完成度](docs/requirements-status.md) ·
 [架构说明](docs/architecture.md)
 
 ![GitSeek repository discovery interface](docs/images/gitseek-home.png)
+
+## Measured quality
+
+The checked-in evaluation suite is deterministic and can be reproduced with
+`POST /api/v1/evals/run`. At the 2026-08-21 baseline it reports:
+
+| Metric | Result | Evaluation scope |
+| --- | ---: | --- |
+| Constraint field accuracy | 100.0% | 40 parser cases |
+| Complete-case pass rate | 100.0% | 40 parser cases |
+| Recall@10 | 87.3% | 100 curated relevance queries |
+| nDCG@10 | 89.3% | 100 curated relevance queries |
+| MRR@10 | 96.6% | 100 curated relevance queries |
+| nDCG@10 95% bootstrap lower bound | 86.5% | Fixed seed, 1,000 resamples |
+| Pairwise preference accuracy | 85.0% | 20 single-curator pairs |
+| nDCG@10 lift over metadata-only baseline | +51.0 pp | Same candidates and judgments |
+
+These numbers are an engineering regression baseline, not a claim of general GitHub-search quality.
+The dataset, relevance grades, ranking version, and failure samples are versioned in the repository.
+
+## What this project demonstrates
+
+- Evaluation-driven information retrieval instead of prompt-only recommendation.
+- PostgreSQL/full-text/semantic/GitHub recall, RRF fusion, hard filtering, explainable reranking,
+  and evidence checks.
+- A bounded Agent with persisted step traces, explicit retries, cancellation, and visible fallback.
+- Production concerns including cache freshness, rate limits, migrations, CI, browser tests, and a
+  distributable Windows client.
+
+Read the reproducible [retrieval experiment](docs/experiments/retrieval-v2.md) and the
+[Chinese portfolio brief](docs/portfolio.zh-CN.md) for methodology, limitations, and interview-ready
+project framing.
 
 ## Architecture
 

@@ -32,6 +32,8 @@ def get_query_planner() -> OpenAIQueryPlanner | None:
         settings.openai_api_key.get_secret_value(),
         model=settings.openai_model,
         base_url=settings.openai_api_url,
+        input_cost_per_million=settings.model_input_cost_per_million,
+        output_cost_per_million=settings.model_output_cost_per_million,
     )
 
 
@@ -44,5 +46,6 @@ async def get_embedding_client() -> AsyncIterator[OpenAIEmbeddingClient | None]:
         settings.embedding_api_key,
         model=settings.embedding_model,
         base_url=settings.embedding_api_url,
+        cost_per_million=settings.embedding_cost_per_million,
     ) as client:
         yield client

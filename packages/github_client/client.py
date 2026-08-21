@@ -13,6 +13,7 @@ from packages.github_client.schemas import (
     GitHubRepository,
     GitHubSearchPage,
     GitHubSearchResult,
+    GitHubUser,
 )
 
 
@@ -52,7 +53,7 @@ class GitHubClient:
         headers = {
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": api_version,
-            "User-Agent": "OpenScout/0.1.0",
+            "User-Agent": "GitSeek/1.0.0",
         }
         token_value = token.get_secret_value() if isinstance(token, SecretStr) else token
         if token_value:
@@ -151,6 +152,29 @@ class GitHubClient:
     async def get_repository(self, owner: str, repo: str) -> GitHubRepository:
         payload = await self._get_json(f"/repos/{owner}/{repo}")
         return GitHubRepository.model_validate(payload)
+
+    async def get_user(self, username: str) -> GitHubUser:
+        payload = await self._get_json(f"/users/{username}")
+        return GitHubUser.model_validate(payload)
+
+    async def list_user_repositories(
+        self,
+        username: str,
+        *,
+        per_page: int = 100,
+    ) -> list[GitHubRepository]:
+        payload = await self._get_json(
+            f"/users/{username}/repos",
+            params={
+                "type": "owner",
+                "sort": "pushed",
+                "direction": "desc",
+                "per_page": max(1, min(per_page, 100)),
+            },
+        )
+        if not isinstance(payload, list):
+            raise GitHubAPIError("Expected a user repository listing")
+        return [GitHubRepository.model_validate(item) for item in payload]
 
     async def get_community_profile(self, owner: str, repo: str) -> GitHubCommunityProfile:
         payload = await self._get_json(f"/repos/{owner}/{repo}/community/profile")

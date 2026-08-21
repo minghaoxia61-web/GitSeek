@@ -89,12 +89,15 @@ async def stream_agent(
                         settings.embedding_api_key,
                         model=settings.embedding_model,
                         base_url=settings.embedding_api_url,
+                        cost_per_million=settings.embedding_cost_per_million,
                     )
                 query_planner = (
                     OpenAIQueryPlanner(
                         settings.openai_api_key.get_secret_value(),
                         model=settings.openai_model,
                         base_url=settings.openai_api_url,
+                        input_cost_per_million=settings.model_input_cost_per_million,
+                        output_cost_per_million=settings.model_output_cost_per_million,
                     )
                     if settings.openai_api_key is not None
                     else None

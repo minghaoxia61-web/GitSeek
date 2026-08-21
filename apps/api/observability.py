@@ -1,6 +1,5 @@
 import logging
 from collections import defaultdict, deque
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from threading import Lock
 from time import perf_counter
@@ -10,52 +9,9 @@ from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 
+from packages.observability import runtime_metrics
+
 logger = logging.getLogger("gitseek.requests")
-
-
-@dataclass
-class PathStats:
-    requests: int = 0
-    errors: int = 0
-    total_duration_ms: float = 0.0
-
-
-class RuntimeMetrics:
-    def __init__(self) -> None:
-        self.started_at = datetime.now(UTC)
-        self._paths: dict[str, PathStats] = defaultdict(PathStats)
-        self._lock = Lock()
-
-    def record(self, path: str, status_code: int, duration_ms: float) -> None:
-        with self._lock:
-            stats = self._paths[path]
-            stats.requests += 1
-            stats.errors += int(status_code >= 500)
-            stats.total_duration_ms += duration_ms
-
-    def snapshot(self) -> dict:
-        with self._lock:
-            paths = {
-                path: {
-                    "requests": stats.requests,
-                    "errors": stats.errors,
-                    "average_duration_ms": round(
-                        stats.total_duration_ms / stats.requests, 1
-                    ),
-                }
-                for path, stats in sorted(self._paths.items())
-                if stats.requests
-            }
-        return {
-            "started_at": self.started_at,
-            "uptime_seconds": max(
-                0, int((datetime.now(UTC) - self.started_at).total_seconds())
-            ),
-            "paths": paths,
-        }
-
-
-runtime_metrics = RuntimeMetrics()
 
 
 class RequestObservabilityMiddleware(BaseHTTPMiddleware):
@@ -96,6 +52,7 @@ class PublicRateLimitMiddleware(BaseHTTPMiddleware):
             "/api/v1/agent/runs": max(1, agent_limit),
             "/api/v1/agent/runs/stream": max(1, agent_limit),
         }
+        self._profile_match_limit = max(1, agent_limit)
         self._requests: dict[tuple[str, str], deque[datetime]] = defaultdict(deque)
         self._lock = Lock()
 
@@ -104,15 +61,19 @@ class PublicRateLimitMiddleware(BaseHTTPMiddleware):
         request: Request,
         call_next: RequestResponseEndpoint,
     ) -> Response:
-        limit = self._limits.get(request.url.path)
-        if request.method != "POST" or limit is None:
+        rate_path = request.url.path
+        limit = self._limits.get(rate_path)
+        if request.method == "GET" and "/issue-matches/" in rate_path:
+            limit = self._profile_match_limit
+            rate_path = "/api/v1/repos/:owner/:repo/issue-matches/:username"
+        if limit is None or request.method not in {"GET", "POST"}:
             return await call_next(request)
         forwarded = request.headers.get("x-real-ip") or request.headers.get("x-forwarded-for")
         client_id = (forwarded.split(",", 1)[0].strip() if forwarded else "") or (
             request.client.host if request.client else "unknown"
         )
         now = datetime.now(UTC)
-        key = (client_id, request.url.path)
+        key = (client_id, rate_path)
         with self._lock:
             bucket = self._requests[key]
             cutoff = now - timedelta(minutes=1)

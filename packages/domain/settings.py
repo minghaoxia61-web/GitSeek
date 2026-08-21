@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "gitseek-api"
-    app_version: str = "0.1.0"
+    app_version: str = "1.0.0"
     environment: str = Field(default="local", validation_alias="OPENSCOUT_ENV")
     api_host: str = "0.0.0.0"
     api_port: int = 8000
@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     embedding_api_url: str = "https://api.openai.com/v1"
     public_rate_limit_per_minute: int = 120
     agent_rate_limit_per_minute: int = 30
+    model_input_cost_per_million: float = 0.0
+    model_output_cost_per_million: float = 0.0
+    embedding_cost_per_million: float = 0.0
 
     @field_validator("database_url", mode="before")
     @classmethod

@@ -43,7 +43,7 @@ async def seed_index(target: int, pages_per_query: int) -> int:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build the initial OpenScout Python index")
+    parser = argparse.ArgumentParser(description="Build the initial GitSeek repository index")
     parser.add_argument("--target", type=int, default=3000)
     parser.add_argument("--pages-per-query", type=int, default=5)
     args = parser.parse_args()

@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, date, datetime, timedelta
+from time import perf_counter
 from uuid import uuid4
 
 from packages.domain.search import (
@@ -11,7 +12,7 @@ from packages.domain.search import (
 from packages.embeddings import EmbeddingAPIError, ExternalEmbeddingService
 from packages.github_client import GitHubAPIError, GitHubClient
 from packages.persistence import ProductPersistence
-from packages.ranking import rank_repositories
+from packages.ranking import rank_repositories, reciprocal_rank_fusion
 from packages.retrieval import (
     RepositoryIndex,
     build_github_queries,
@@ -19,8 +20,9 @@ from packages.retrieval import (
     parse_search_constraints,
 )
 
-LOCAL_RANKING_VERSION = "hybrid-vector-v9"
-EXTERNAL_RANKING_VERSION = "hybrid-external-vector-v10"
+LOCAL_RANKING_VERSION = "hybrid-rrf-v11"
+EXTERNAL_RANKING_VERSION = "hybrid-external-rrf-v12"
+RRF_RANK_CONSTANT = 60
 
 
 class SearchService:
@@ -44,6 +46,9 @@ class SearchService:
         constraints: SearchConstraints | None = None,
         search_terms: list[str] | None = None,
     ) -> SearchResponse:
+        search_started = perf_counter()
+        channel_latency_ms: dict[str, float] = {}
+        channel_rankings: dict[str, list[str]] = {}
         constraints = (
             constraints.model_copy(deep=True)
             if constraints is not None
@@ -91,8 +96,24 @@ class SearchService:
                 return cached
         indexed = []
         if self._repository_index is not None:
+            channel_started = perf_counter()
             keyword_indexed = self._repository_index.search(request.query, constraints)
+            channel_latency_ms["local_keyword"] = round(
+                (perf_counter() - channel_started) * 1000,
+                2,
+            )
+            channel_started = perf_counter()
             semantic_indexed = self._repository_index.semantic_search(request.query, constraints)
+            channel_latency_ms["local_semantic"] = round(
+                (perf_counter() - channel_started) * 1000,
+                2,
+            )
+            channel_rankings["local_keyword"] = [
+                item.repository.full_name for item in keyword_indexed
+            ]
+            channel_rankings["local_semantic"] = [
+                item.repository.full_name for item in semantic_indexed
+            ]
             indexed_by_name = {
                 item.repository.full_name: item for item in [*keyword_indexed, *semantic_indexed]
             }
@@ -102,11 +123,16 @@ class SearchService:
         github_status = "live"
         successful_queries = 0
         last_error: GitHubAPIError | None = None
+        github_started = perf_counter()
         query_results = await asyncio.gather(
             *(self._client.search_repositories(query, per_page=30) for query in github_queries),
             return_exceptions=True,
         )
-        for query_result in query_results:
+        channel_latency_ms["github_live"] = round(
+            (perf_counter() - github_started) * 1000,
+            2,
+        )
+        for query_index, query_result in enumerate(query_results, start=1):
             if isinstance(query_result, GitHubAPIError):
                 last_error = query_result
                 continue
@@ -114,6 +140,9 @@ class SearchService:
                 raise query_result
             successful_queries += 1
             github_total += query_result.result.total_count
+            channel_rankings[f"github_live_{query_index}"] = [
+                item.full_name for item in query_result.result.items
+            ]
             for item in query_result.result.items:
                 github_items_by_name[item.full_name] = item
         github_items = list(github_items_by_name.values())
@@ -130,6 +159,10 @@ class SearchService:
             candidates[item.full_name] = item
             sources.setdefault(item.full_name, set()).add("github_live")
             fetched_at[item.full_name] = datetime.now(UTC)
+        fusion = reciprocal_rank_fusion(
+            channel_rankings,
+            rank_constant=RRF_RANK_CONSTANT,
+        )
         embedding_status = "local"
         embedding_model = None
         embedding_cached = 0
@@ -161,6 +194,7 @@ class SearchService:
             semantic_scores=semantic_scores,
             required_search_terms=inferred_search_terms[:2],
             repository_adjustments=repository_adjustments,
+            retrieval_scores=fusion.scores,
         )
         for result in results:
             result.retrieval_sources = sorted(sources.get(result.full_name, set()))
@@ -188,6 +222,13 @@ class SearchService:
                 embedding_model=embedding_model,
                 embedding_cached_repositories=embedding_cached,
                 embedding_generated_repositories=embedding_generated,
+                fusion_strategy="rrf",
+                fusion_rank_constant=RRF_RANK_CONSTANT,
+                channel_candidate_counts={
+                    channel: len(items) for channel, items in channel_rankings.items()
+                },
+                channel_latency_ms=channel_latency_ms,
+                total_latency_ms=round((perf_counter() - search_started) * 1000, 2),
             ),
         )
         if self._persistence is not None:
