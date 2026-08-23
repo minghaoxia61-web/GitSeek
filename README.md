@@ -9,6 +9,7 @@ application code. Model-assisted planning is optional, bounded, and observable; 
 continues through a deterministic fallback when a model or external embedding provider is absent.
 
 [在线体验](https://openscout-gitseek.minghaoxia61.chatgpt.site) ·
+[GitHub Pages 备用预览](https://minghaoxia61-web.github.io/GitSeek/) ·
 [Windows 下载](https://github.com/minghaoxia61-web/GitSeek/releases/latest) ·
 [需求完成度](docs/requirements-status.md) ·
 [架构说明](docs/architecture.md)

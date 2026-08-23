@@ -1,5 +1,8 @@
-const CACHE = "gitseek-shell-v1";
-const SHELL = ["/", "/manifest.webmanifest", "/favicon.svg", "/icon-192.png", "/icon-512.png"];
+const CACHE = "gitseek-shell-v2";
+const BASE_PATH = new URL(self.registration.scope).pathname.replace(/\/$/, "");
+const assetPath = (path) => `${BASE_PATH}${path}`;
+const APP_SHELL = assetPath("/");
+const SHELL = [APP_SHELL, assetPath("/manifest.webmanifest"), assetPath("/favicon.svg"), assetPath("/icon-192.png"), assetPath("/icon-512.png")];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)));
@@ -18,14 +21,14 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin || url.pathname.startsWith("/api/") || url.pathname === "/health") return;
+  if (url.origin !== self.location.origin || url.pathname.startsWith(assetPath("/api/")) || url.pathname === assetPath("/health")) return;
 
   if (request.mode === "navigate") {
     event.respondWith(fetch(request).then((response) => {
       const copy = response.clone();
-      caches.open(CACHE).then((cache) => cache.put("/", copy));
+      caches.open(CACHE).then((cache) => cache.put(APP_SHELL, copy));
       return response;
-    }).catch(() => caches.match("/")));
+    }).catch(() => caches.match(APP_SHELL)));
     return;
   }
 

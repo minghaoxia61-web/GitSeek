@@ -33,6 +33,6 @@ void startApplication();
 
 if (import.meta.env.PROD && import.meta.env.MODE !== "desktop" && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    void navigator.serviceWorker.register("/sw.js");
+    void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`);
   });
 }
