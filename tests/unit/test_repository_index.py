@@ -114,3 +114,23 @@ def test_semantic_index_recalls_repository_from_chinese_intent() -> None:
         )
 
     assert [item.repository.full_name for item in results] == ["example/workflow-engine"]
+
+
+def test_semantic_index_links_data_analysis_to_scientific_computing() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        repository = make_repository()
+        repository.name = "numpy"
+        repository.full_name = "numpy/numpy"
+        repository.description = "Fundamental package for scientific computing with Python"
+        repository.topics = ["numpy", "scientific-computing", "data"]
+        session.add(repository)
+        session.commit()
+
+        results = RepositoryIndex(session).semantic_search(
+            "用 Python 学数据分析",
+            parse_search_constraints("用 Python 学数据分析"),
+        )
+
+    assert [item.repository.full_name for item in results] == ["numpy/numpy"]

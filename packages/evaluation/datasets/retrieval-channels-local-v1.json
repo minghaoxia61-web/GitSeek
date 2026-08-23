@@ -1,0 +1,510 @@
+{
+  "schema_version": "retrieval-channel-snapshot-v1",
+  "snapshot_id": "test-split-2026-08-23",
+  "dataset_version": "retrieval-relevance-v1",
+  "captured_at": "2026-08-23T07:28:28.299652+00:00",
+  "ranking_version": "hybrid-rrf-v11",
+  "rrf_rank_constant": 60,
+  "query_count": 20,
+  "queries": [
+    {
+      "query_id": "dataframe-01",
+      "query": "Python 数据分析 DataFrame 项目",
+      "channels": {
+        "local_keyword": [
+          "pandas-dev/pandas"
+        ],
+        "local_semantic": [
+          "pandas-dev/pandas"
+        ]
+      },
+      "final_ranking": [
+        "pandas-dev/pandas"
+      ]
+    },
+    {
+      "query_id": "dataframe-02",
+      "query": "学习 pandas 的开源仓库",
+      "channels": {
+        "local_keyword": [
+          "pandas-dev/pandas"
+        ],
+        "local_semantic": [
+          "pandas-dev/pandas",
+          "pola-rs/polars"
+        ]
+      },
+      "final_ranking": [
+        "pandas-dev/pandas",
+        "pola-rs/polars"
+      ]
+    },
+    {
+      "query_id": "dataframe-03",
+      "query": "fast dataframe library for Python",
+      "channels": {
+        "local_keyword": [
+          "huggingface/transformers",
+          "fastapi/fastapi",
+          "django/django",
+          "Textualize/rich",
+          "scrapy/scrapy",
+          "psf/requests",
+          "pandas-dev/pandas",
+          "apache/airflow",
+          "fastapi/full-stack-fastapi-template",
+          "numpy/numpy"
+        ],
+        "local_semantic": [
+          "pandas-dev/pandas",
+          "celery/celery",
+          "numpy/numpy",
+          "psf/requests",
+          "huggingface/transformers",
+          "HypothesisWorks/hypothesis",
+          "encode/httpx",
+          "PrefectHQ/prefect"
+        ]
+      },
+      "final_ranking": [
+        "pandas-dev/pandas"
+      ]
+    },
+    {
+      "query_id": "dataframe-04",
+      "query": "数据处理项目推荐",
+      "channels": {
+        "local_keyword": [
+          "huggingface/transformers",
+          "fastapi/fastapi",
+          "django/django",
+          "pallets/flask",
+          "scikit-learn/scikit-learn",
+          "Textualize/rich",
+          "scrapy/scrapy",
+          "psf/requests",
+          "pandas-dev/pandas",
+          "apache/airflow"
+        ],
+        "local_semantic": [
+          "pandas-dev/pandas",
+          "pola-rs/polars",
+          "encode/httpx"
+        ]
+      },
+      "final_ranking": [
+        "pandas-dev/pandas",
+        "pola-rs/polars"
+      ]
+    },
+    {
+      "query_id": "dataframe-05",
+      "query": "Python 表格数据分析框架",
+      "channels": {
+        "local_keyword": [
+          "huggingface/transformers",
+          "fastapi/fastapi",
+          "django/django",
+          "pallets/flask",
+          "scikit-learn/scikit-learn",
+          "Textualize/rich",
+          "scrapy/scrapy",
+          "psf/requests",
+          "pandas-dev/pandas",
+          "apache/airflow"
+        ],
+        "local_semantic": [
+          "pandas-dev/pandas"
+        ]
+      },
+      "final_ranking": [
+        "pandas-dev/pandas"
+      ]
+    },
+    {
+      "query_id": "dataframe-06",
+      "query": "DataFrame beginner project",
+      "channels": {
+        "local_keyword": [
+          "pallets/flask",
+          "psf/requests",
+          "pandas-dev/pandas",
+          "pola-rs/polars",
+          "fastapi/typer"
+        ],
+        "local_semantic": [
+          "pandas-dev/pandas",
+          "pallets/flask",
+          "pola-rs/polars",
+          "psf/requests",
+          "fastapi/typer",
+          "wagtail/wagtail",
+          "HypothesisWorks/hypothesis",
+          "PrefectHQ/prefect"
+        ]
+      },
+      "final_ranking": [
+        "pandas-dev/pandas",
+        "pola-rs/polars"
+      ]
+    },
+    {
+      "query_id": "dataframe-07",
+      "query": "高性能数据分析开源项目",
+      "channels": {
+        "local_keyword": [
+          "huggingface/transformers",
+          "fastapi/fastapi",
+          "django/django",
+          "pallets/flask",
+          "scikit-learn/scikit-learn",
+          "Textualize/rich",
+          "scrapy/scrapy",
+          "psf/requests",
+          "pandas-dev/pandas",
+          "apache/airflow"
+        ],
+        "local_semantic": [
+          "pandas-dev/pandas",
+          "pola-rs/polars",
+          "aio-libs/aiohttp"
+        ]
+      },
+      "final_ranking": [
+        "pandas-dev/pandas",
+        "pola-rs/polars"
+      ]
+    },
+    {
+      "query_id": "dataframe-08",
+      "query": "pandas 替代项目",
+      "channels": {
+        "local_keyword": [
+          "pandas-dev/pandas"
+        ],
+        "local_semantic": [
+          "pandas-dev/pandas",
+          "pola-rs/polars",
+          "sqlalchemy/sqlalchemy"
+        ]
+      },
+      "final_ranking": [
+        "pandas-dev/pandas",
+        "pola-rs/polars"
+      ]
+    },
+    {
+      "query_id": "dataframe-09",
+      "query": "scientific data manipulation repository",
+      "channels": {
+        "local_keyword": [
+          "scikit-learn/scikit-learn",
+          "pandas-dev/pandas",
+          "apache/airflow",
+          "pola-rs/polars",
+          "numpy/numpy",
+          "PrefectHQ/prefect",
+          "sqlalchemy/sqlalchemy"
+        ],
+        "local_semantic": [
+          "pandas-dev/pandas",
+          "pola-rs/polars",
+          "numpy/numpy"
+        ]
+      },
+      "final_ranking": [
+        "pandas-dev/pandas",
+        "pola-rs/polars",
+        "numpy/numpy",
+        "scikit-learn/scikit-learn",
+        "apache/airflow",
+        "PrefectHQ/prefect",
+        "sqlalchemy/sqlalchemy"
+      ]
+    },
+    {
+      "query_id": "dataframe-10",
+      "query": "用 Python 学数据分析",
+      "channels": {
+        "local_keyword": [
+          "huggingface/transformers",
+          "fastapi/fastapi",
+          "django/django",
+          "pallets/flask",
+          "scikit-learn/scikit-learn",
+          "Textualize/rich",
+          "scrapy/scrapy",
+          "psf/requests",
+          "pandas-dev/pandas",
+          "apache/airflow"
+        ],
+        "local_semantic": [
+          "pandas-dev/pandas",
+          "encode/httpx"
+        ]
+      },
+      "final_ranking": [
+        "pandas-dev/pandas"
+      ]
+    },
+    {
+      "query_id": "machine-learning-01",
+      "query": "Python 机器学习 NLP 项目",
+      "channels": {
+        "local_keyword": [
+          "huggingface/transformers"
+        ],
+        "local_semantic": [
+          "huggingface/transformers",
+          "scikit-learn/scikit-learn",
+          "numpy/numpy"
+        ]
+      },
+      "final_ranking": [
+        "huggingface/transformers",
+        "scikit-learn/scikit-learn"
+      ]
+    },
+    {
+      "query_id": "machine-learning-02",
+      "query": "学习 Transformer 的开源仓库",
+      "channels": {
+        "local_keyword": [
+          "huggingface/transformers"
+        ],
+        "local_semantic": [
+          "huggingface/transformers",
+          "sqlalchemy/sqlalchemy",
+          "django/django",
+          "Textualize/rich",
+          "fastapi/fastapi",
+          "fastapi/full-stack-fastapi-template",
+          "apache/airflow"
+        ]
+      },
+      "final_ranking": [
+        "huggingface/transformers"
+      ]
+    },
+    {
+      "query_id": "machine-learning-03",
+      "query": "machine learning beginner repository",
+      "channels": {
+        "local_keyword": [
+          "huggingface/transformers",
+          "pallets/flask",
+          "scikit-learn/scikit-learn",
+          "psf/requests",
+          "fastapi/typer"
+        ],
+        "local_semantic": [
+          "scikit-learn/scikit-learn",
+          "pallets/flask",
+          "psf/requests",
+          "huggingface/transformers",
+          "fastapi/typer"
+        ]
+      },
+      "final_ranking": [
+        "huggingface/transformers",
+        "scikit-learn/scikit-learn"
+      ]
+    },
+    {
+      "query_id": "machine-learning-04",
+      "query": "自然语言处理模型项目",
+      "channels": {
+        "local_keyword": [
+          "huggingface/transformers",
+          "fastapi/fastapi",
+          "django/django",
+          "pallets/flask",
+          "scikit-learn/scikit-learn",
+          "Textualize/rich",
+          "scrapy/scrapy",
+          "psf/requests",
+          "pandas-dev/pandas",
+          "apache/airflow"
+        ],
+        "local_semantic": [
+          "huggingface/transformers",
+          "pola-rs/polars"
+        ]
+      },
+      "final_ranking": [
+        "huggingface/transformers",
+        "scikit-learn/scikit-learn"
+      ]
+    },
+    {
+      "query_id": "machine-learning-05",
+      "query": "LLM 模型工具库",
+      "channels": {
+        "local_keyword": [
+          "huggingface/transformers"
+        ],
+        "local_semantic": [
+          "huggingface/transformers",
+          "Textualize/rich",
+          "sqlalchemy/sqlalchemy"
+        ]
+      },
+      "final_ranking": [
+        "huggingface/transformers",
+        "Textualize/rich",
+        "sqlalchemy/sqlalchemy"
+      ]
+    },
+    {
+      "query_id": "machine-learning-06",
+      "query": "Python data science ML framework",
+      "channels": {
+        "local_keyword": [
+          "fastapi/fastapi",
+          "django/django",
+          "pallets/flask",
+          "scikit-learn/scikit-learn",
+          "scrapy/scrapy",
+          "pandas-dev/pandas",
+          "apache/airflow",
+          "numpy/numpy",
+          "PrefectHQ/prefect",
+          "aio-libs/aiohttp"
+        ],
+        "local_semantic": [
+          "scikit-learn/scikit-learn",
+          "huggingface/transformers",
+          "numpy/numpy",
+          "pallets/flask",
+          "PrefectHQ/prefect"
+        ]
+      },
+      "final_ranking": [
+        "scikit-learn/scikit-learn",
+        "pallets/flask",
+        "numpy/numpy",
+        "PrefectHQ/prefect",
+        "huggingface/transformers",
+        "fastapi/fastapi",
+        "django/django",
+        "scrapy/scrapy",
+        "pandas-dev/pandas",
+        "apache/airflow"
+      ]
+    },
+    {
+      "query_id": "machine-learning-07",
+      "query": "想学习文本模型源码",
+      "channels": {
+        "local_keyword": [
+          "huggingface/transformers",
+          "fastapi/fastapi",
+          "django/django",
+          "pallets/flask",
+          "scikit-learn/scikit-learn",
+          "Textualize/rich",
+          "scrapy/scrapy",
+          "psf/requests",
+          "pandas-dev/pandas",
+          "apache/airflow"
+        ],
+        "local_semantic": [
+          "huggingface/transformers"
+        ]
+      },
+      "final_ranking": [
+        "huggingface/transformers",
+        "scikit-learn/scikit-learn"
+      ]
+    },
+    {
+      "query_id": "machine-learning-08",
+      "query": "开源机器学习算法项目",
+      "channels": {
+        "local_keyword": [
+          "huggingface/transformers",
+          "fastapi/fastapi",
+          "django/django",
+          "pallets/flask",
+          "scikit-learn/scikit-learn",
+          "Textualize/rich",
+          "scrapy/scrapy",
+          "psf/requests",
+          "pandas-dev/pandas",
+          "apache/airflow"
+        ],
+        "local_semantic": [
+          "scikit-learn/scikit-learn",
+          "huggingface/transformers"
+        ]
+      },
+      "final_ranking": [
+        "huggingface/transformers",
+        "scikit-learn/scikit-learn"
+      ]
+    },
+    {
+      "query_id": "machine-learning-09",
+      "query": "NLP transformer Apache license",
+      "channels": {
+        "local_keyword": [
+          "huggingface/transformers"
+        ],
+        "local_semantic": [
+          "huggingface/transformers",
+          "sqlalchemy/sqlalchemy",
+          "django/django",
+          "Textualize/rich",
+          "fastapi/fastapi",
+          "fastapi/full-stack-fastapi-template",
+          "apache/airflow",
+          "pola-rs/polars"
+        ]
+      },
+      "final_ranking": [
+        "huggingface/transformers"
+      ]
+    },
+    {
+      "query_id": "machine-learning-10",
+      "query": "适合学习的 AI 模型仓库",
+      "channels": {
+        "local_keyword": [
+          "huggingface/transformers",
+          "fastapi/fastapi",
+          "django/django",
+          "pallets/flask",
+          "scikit-learn/scikit-learn",
+          "Textualize/rich",
+          "scrapy/scrapy",
+          "psf/requests",
+          "pandas-dev/pandas",
+          "apache/airflow"
+        ],
+        "local_semantic": [
+          "pola-rs/polars",
+          "psf/requests"
+        ]
+      },
+      "final_ranking": [
+        "psf/requests",
+        "pola-rs/polars",
+        "huggingface/transformers",
+        "fastapi/fastapi",
+        "django/django",
+        "pallets/flask",
+        "scikit-learn/scikit-learn",
+        "Textualize/rich",
+        "scrapy/scrapy",
+        "pandas-dev/pandas"
+      ]
+    }
+  ],
+  "capture_config": {
+    "split": "test",
+    "live_query_limit": 1,
+    "github_timeout_seconds": 1.5,
+    "candidate_corpus": "retrieval-relevance-v1 plus GitHub live results",
+    "metric_scope": "judged repositories only; unjudged live results receive grade 0"
+  }
+}

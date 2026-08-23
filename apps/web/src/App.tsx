@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { apiFetch, checkApiHealth, streamAgentRun } from "./api";
-import type { AgentRunResponse, AgentStep, ContributionIssue, Recommendation, RepositoryInvestigation, SearchResponse, View } from "./types";
+import type { AgentRunResponse, AgentStep, ContributionIssue, ContributionIssueResponse, Recommendation, RepositoryInvestigation, SearchResponse, View } from "./types";
 import type { ConnectionStatus, SavedEntry, SearchHistoryEntry, SearchOptions, SearchProblem, SearchAttempt } from "./lib/types";
 import {
   DEFAULT_SEARCH_OPTIONS,
@@ -31,6 +31,7 @@ export default function App() {
   const [investigationStatus, setInvestigationStatus] = useState<"loading" | "ready" | "unavailable">("unavailable");
   const [issues, setIssues] = useState<ContributionIssue[]>([]);
   const [issueStatus, setIssueStatus] = useState<"loading" | "ready" | "unavailable">("unavailable");
+  const [issueDataStatus, setIssueDataStatus] = useState<"fresh" | "stale">("fresh");
   const [compare, setCompare] = useState<string[]>([]);
   const [savedEntries, setSavedEntries] = useState<SavedEntry[]>(readSavedEntries);
   const [searchHistory, setSearchHistory] = useState<SearchHistoryEntry[]>(readSearchHistory);
@@ -206,6 +207,7 @@ export default function App() {
     setInvestigationStatus("loading");
     setIssues([]);
     setIssueStatus("loading");
+    setIssueDataStatus("fresh");
     setView("detail");
     const [owner, name] = repo.full_name.split("/");
     apiFetch<RepositoryInvestigation>(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/investigate${force ? "?refresh=true" : ""}`)
@@ -215,9 +217,10 @@ export default function App() {
       })
       .catch(() => setInvestigationStatus("unavailable"));
 
-    apiFetch<{ issues: ContributionIssue[] }>(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues?limit=5${force ? "&refresh=true" : ""}`)
+    apiFetch<ContributionIssueResponse>(`/api/v1/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues?limit=5${force ? "&refresh=true" : ""}`)
       .then((payload) => {
         setIssues(payload.issues);
+        setIssueDataStatus(payload.data_status ?? "fresh");
         setIssueStatus("ready");
       })
       .catch(() => setIssueStatus("unavailable"));
@@ -293,7 +296,7 @@ export default function App() {
       {view === "discover" && <DiscoverView onSearch={search} onOpenTrending={(repo) => { setDetailParent("discover"); openDetail(repo); }} initialQuery={searchDraft.query} initialOptions={searchDraft.options} history={searchHistory} />}
       {view === "results" && <ResultsView data={data} agentRun={agentRun} agentProgress={agentProgress} compare={compare} saved={savedEntries.map((item) => item.repository)} toggleCompare={toggleCompare} onSave={(repo) => void (savedEntries.some((item) => item.repository === repo.full_name) ? removeSavedRepository(repo.full_name) : saveRepository(repo))} problem={searchProblem} notice={searchNotice} onCancelAgent={() => agentController.current?.abort()} onNewSearch={() => setView("discover")} onDetail={(repo) => { setDetailParent("results"); openDetail(repo); }} />}
       {view === "saved" && <SavedView entries={savedEntries} onOpen={(repo) => { setDetailParent("saved"); openDetail(repo); }} onRemove={(repository) => void removeSavedRepository(repository)} onDiscover={() => setView("discover")} />}
-      {view === "detail" && selectedRepo && <DetailView repo={selectedRepo} investigation={investigation} status={investigationStatus} issues={issues} issueStatus={issueStatus} onBack={() => setView(detailParent)} onCompare={() => toggleCompare(selectedRepo.full_name)} onRefresh={() => refreshDetail(selectedRepo, true)} onFeedback={submitFeedback} />}
+      {view === "detail" && selectedRepo && <DetailView repo={selectedRepo} investigation={investigation} status={investigationStatus} issues={issues} issueStatus={issueStatus} issueDataStatus={issueDataStatus} onBack={() => setView(detailParent)} onCompare={() => toggleCompare(selectedRepo.full_name)} onRefresh={() => refreshDetail(selectedRepo, true)} onFeedback={submitFeedback} />}
       {view === "compare" && <CompareView repos={compareRepos} onDiscover={() => setView(data.query ? "results" : "discover")} onDetail={(repo) => { setDetailParent(data.query ? "results" : "saved"); openDetail(repo); }} onRemove={toggleCompare} />}
       {view === "evals" && <EvalsView />}
       {view === "settings" && <SettingsView connection={connection} onApiChanged={() => setApiRevision((current) => current + 1)} />}

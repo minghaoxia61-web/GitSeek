@@ -18,18 +18,18 @@ continues through a deterministic fallback when a model or external embedding pr
 ## Measured quality
 
 The checked-in evaluation suite is deterministic and can be reproduced with
-`POST /api/v1/evals/run`. At the 2026-08-21 baseline it reports:
+`POST /api/v1/evals/run`. At the 2026-08-23 v2 baseline it reports:
 
 | Metric | Result | Evaluation scope |
 | --- | ---: | --- |
 | Constraint field accuracy | 100.0% | 40 parser cases |
 | Complete-case pass rate | 100.0% | 40 parser cases |
-| Recall@10 | 87.3% | 100 curated relevance queries |
-| nDCG@10 | 89.3% | 100 curated relevance queries |
-| MRR@10 | 96.6% | 100 curated relevance queries |
-| nDCG@10 95% bootstrap lower bound | 86.5% | Fixed seed, 1,000 resamples |
+| Recall@10 | 97.5% | 100 curated relevance queries |
+| nDCG@10 | 91.0% | 100 curated relevance queries |
+| MRR@10 | 96.1% | 100 curated relevance queries |
+| nDCG@10 95% bootstrap lower bound | 88.0% | Fixed seed, 1,000 resamples |
 | Pairwise preference accuracy | 85.0% | 20 single-curator pairs |
-| nDCG@10 lift over metadata-only baseline | +51.0 pp | Same candidates and judgments |
+| nDCG@10 lift over metadata-only baseline | +52.2 pp | Same candidates and judgments |
 
 These numbers are an engineering regression baseline, not a claim of general GitHub-search quality.
 The dataset, relevance grades, ranking version, and failure samples are versioned in the repository.
@@ -43,7 +43,9 @@ The dataset, relevance grades, ranking version, and failure samples are versione
 - Production concerns including cache freshness, rate limits, migrations, CI, browser tests, and a
   distributable Windows client.
 
-Read the reproducible [retrieval experiment](docs/experiments/retrieval-v2.md) and the
+Read the reproducible [retrieval experiment](docs/experiments/retrieval-v2.md), the
+[channel/RRF experiment](docs/experiments/retrieval-channels-v2.md),
+[annotation protocol](docs/evaluation/annotation-guide.md), and the
 [Chinese portfolio brief](docs/portfolio.zh-CN.md) for methodology, limitations, and interview-ready
 project framing.
 
@@ -308,7 +310,10 @@ and fetch time for every claim. Repository content is treated as untrusted data 
 
 GitSeek refreshes a repository's open issues before recommending a task. Pull requests, assigned
 work, and locked discussions are excluded; labels, description completeness, discussion size, and
-risk labels produce a bounded difficulty estimate.
+risk labels produce a bounded difficulty estimate. For the final candidates, GitSeek samples up to
+30 public comments and uses GitHub's author relationship to measure the first OWNER, MEMBER, or
+COLLABORATOR response. Fast responses add bounded evidence, old unanswered Issues are demoted, and
+per-Issue failures remain visible as unknown instead of failing the entire recommendation request.
 
 ```powershell
 Invoke-RestMethod `
@@ -322,12 +327,33 @@ Repository investigations are cached for 12 hours and actionable Issue lists for
 manual recheck bypasses those caches. If GitHub reports a rate limit, an older cached dossier can
 still be returned instead of replacing useful evidence with an error.
 
+The quality gate also runs deterministic external-failure scenarios through a reusable fault
+injector. It verifies that GitHub search timeouts preserve local-index results, Issue comment
+failures stay isolated to one response signal, and both rate limits and transport failures return
+explicitly marked stale Issue caches when evidence is available. See
+[`docs/resilience/fault-injection.md`](docs/resilience/fault-injection.md).
+
 ## Evaluation
 
 `GET /api/v1/evals/summary` and `POST /api/v1/evals/run` execute the versioned deterministic smoke
 set and return its actual constraint-parsing accuracy, complete-case pass rate, and failure samples.
-This is deliberately a small engineering gate, not a substitute for the planned 100-150 case human
-relevance dataset.
+The retrieval corpus contains 100 bilingual queries and 2,300 fixed judgments. It remains a small,
+single-curator engineering gate rather than a claim about general GitHub-search quality.
+
+Dataset splits keep all paraphrases of one intent together. Inspect the deterministic 70/10/20
+train/dev/test profile with:
+
+```powershell
+.\.venv\Scripts\python -m packages.evaluation.annotations profile
+```
+
+The annotation protocol documents blind, intent-stratified second review and Cohen's Kappa
+reporting. GitSeek continues to label the current corpus `single-curator` until that human review is
+actually completed.
+
+The evaluation response also includes query-level retrieval diagnostics. It classifies fusion
+recall gaps, reranker recall loss, ordering regressions, and empty channels, and preserves the
+missing repositories and suggested next action for each fixed test query.
 
 ## Database migration
 
@@ -377,6 +403,12 @@ counts. The web settings screen shows the same state without exposing the refres
 
 Equivalent searches are reused from PostgreSQL for 15 minutes. Cache hits skip GitHub entirely and
 are identified by `retrieval.cache_hit` and `retrieval.cached_at` in the API response.
+
+`GET /api/v1/metrics` exposes the current instance's request P50/P95, error rates, model token/cost
+totals, search cache-hit rate, GitHub degradation rate, end-to-end search latency, per-channel
+latency, and a rolling minute trend. The quality page visualizes these values. Metrics are bounded
+in memory and reset when the instance restarts; they demonstrate instrumentation and fallback
+behavior, not a distributed long-term monitoring system.
 
 ## Tests and lint
 

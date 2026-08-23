@@ -17,5 +17,6 @@ build/
 .qoder/
 .workbuddy/
 .trae-html-share-packages/
+.local/
 apps/desktop/node_modules/
 apps/desktop/src-tauri/target/

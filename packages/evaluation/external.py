@@ -6,6 +6,7 @@ from packages.embeddings import EmbeddingAPIError, OpenAIEmbeddingClient
 from packages.embeddings.service import cosine_similarity
 from packages.retrieval import parse_search_constraints
 
+from .annotations import grades_for_query
 from .service import _load_retrieval_dataset, build_evaluation_summary
 
 
@@ -44,8 +45,8 @@ async def evaluate_external_embeddings(
     reciprocal_ranks: list[float] = []
     query_index = 0
     for intent in dataset["intents"]:
-        grades = intent["grades"]
-        for query in intent["queries"]:
+        for query_number, query in enumerate(intent["queries"], start=1):
+            grades = grades_for_query(dataset, intent, query_number)
             constraints = parse_search_constraints(query, today=reference_date)
             allowed = {
                 item["full_name"]
@@ -53,8 +54,11 @@ async def evaluate_external_embeddings(
                 if (constraints.language == "Any" or item["language"] == constraints.language)
                 and (not constraints.licenses or item["license"] in constraints.licenses)
             }
+            eligible_grades = {
+                name: grade for name, grade in grades.items() if grade > 0 and name in allowed
+            }
             relevant = {
-                name for name, grade in grades.items() if grade > 0 and name in allowed
+                name for name, grade in eligible_grades.items() if grade >= 2
             }
             if not relevant:
                 query_index += 1
@@ -70,11 +74,11 @@ async def evaluate_external_embeddings(
             names = [name for _, name in scored]
             recalls.append(len(relevant.intersection(names)) / len(relevant))
             dcg = sum(
-                (2 ** grades.get(name, 0) - 1) / math.log2(rank + 1)
+                (2 ** eligible_grades.get(name, 0) - 1) / math.log2(rank + 1)
                 for rank, name in enumerate(names, start=1)
             )
             ideal = sorted(
-                (grade for name, grade in grades.items() if name in relevant),
+                eligible_grades.values(),
                 reverse=True,
             )[:10]
             ideal_dcg = sum(

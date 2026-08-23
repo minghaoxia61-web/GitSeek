@@ -1,3 +1,5 @@
+from datetime import UTC, datetime, timedelta
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -71,6 +73,30 @@ def test_runtime_metrics_report_percentiles_errors_tokens_and_cost() -> None:
         output_tokens=200,
         estimated_cost_usd=0.0014,
     )
+    now = datetime(2026, 8, 23, 12, 0, tzinfo=UTC)
+    metrics.record_search(
+        cache_hit=False,
+        github_attempted=True,
+        github_degraded=False,
+        total_duration_ms=120,
+        channel_latency_ms={"local_keyword": 10, "github_live": 80},
+        recorded_at=now,
+    )
+    metrics.record_search(
+        cache_hit=True,
+        github_attempted=False,
+        github_degraded=False,
+        total_duration_ms=15,
+        recorded_at=now + timedelta(minutes=1),
+    )
+    metrics.record_search(
+        cache_hit=False,
+        github_attempted=True,
+        github_degraded=True,
+        total_duration_ms=200,
+        channel_latency_ms={"local_keyword": 20, "github_live": 150},
+        recorded_at=now + timedelta(minutes=1),
+    )
 
     snapshot = metrics.snapshot()
     assert snapshot["paths"]["/search"]["p50_duration_ms"] == 30.0
@@ -78,3 +104,10 @@ def test_runtime_metrics_report_percentiles_errors_tokens_and_cost() -> None:
     assert snapshot["paths"]["/search"]["error_rate"] == 0.25
     assert snapshot["external_services"]["model:test"]["input_tokens"] == 1_000
     assert snapshot["external_services"]["model:test"]["estimated_cost_usd"] == 0.0014
+    assert snapshot["search"]["searches"] == 3
+    assert snapshot["search"]["cache_hit_rate"] == 0.3333
+    assert snapshot["search"]["github_degradation_rate"] == 0.5
+    assert snapshot["search"]["p50_duration_ms"] == 120
+    assert snapshot["search"]["p95_duration_ms"] == 200
+    assert snapshot["search"]["channels"]["github_live"]["p95_duration_ms"] == 150
+    assert len(snapshot["search"]["trend"]) == 2

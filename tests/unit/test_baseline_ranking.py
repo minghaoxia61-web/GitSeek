@@ -103,6 +103,28 @@ def test_specific_search_terms_remove_popular_but_unrelated_candidates() -> None
     assert results[0].score_breakdown["relevance"] > 35
 
 
+def test_semantic_match_survives_expansion_term_filter() -> None:
+    constraints = SearchConstraints(language="Python")
+    repository = _repository(
+        github_id=1,
+        name="numpy",
+        license_spdx="BSD-3-Clause",
+        description="Fundamental package for scientific computing with Python",
+        topics=["numpy", "scientific-computing", "data"],
+    )
+
+    results, eligible_count = rank_repositories(
+        [repository],
+        constraints,
+        limit=10,
+        query="用 Python 学数据分析 dataframe pandas polars",
+        required_search_terms=["dataframe", "pandas"],
+    )
+
+    assert eligible_count == 1
+    assert [result.full_name for result in results] == ["example/numpy"]
+
+
 def test_primary_repository_name_beats_extension_packages() -> None:
     constraints = SearchConstraints(language="Python")
     repositories = [

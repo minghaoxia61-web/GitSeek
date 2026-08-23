@@ -2,7 +2,7 @@ import asyncio
 
 import httpx
 
-from packages.github_client import GitHubClient, GitHubRateLimitError
+from packages.github_client import GitHubAPIError, GitHubClient, GitHubRateLimitError
 
 
 def _repository_payload(*, stars: int = 42) -> dict[str, object]:
@@ -101,6 +101,33 @@ def test_repository_content_methods_return_typed_models() -> None:
     asyncio.run(run())
 
 
+def test_issue_comments_return_author_association() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/repos/example/demo/issues/7/comments"
+        assert request.url.params["per_page"] == "30"
+        return httpx.Response(
+            200,
+            json=[
+                {
+                    "id": 9,
+                    "html_url": "https://github.com/example/demo/issues/7#issuecomment-9",
+                    "created_at": "2026-08-01T12:00:00Z",
+                    "user": {"login": "maintainer"},
+                    "author_association": "OWNER",
+                }
+            ],
+        )
+
+    async def run() -> None:
+        async with GitHubClient(transport=httpx.MockTransport(handler)) as client:
+            comments = await client.list_issue_comments("example", "demo", 7)
+
+        assert comments[0].user.login == "maintainer"
+        assert comments[0].author_association == "OWNER"
+
+    asyncio.run(run())
+
+
 def test_search_repositories_raises_specific_rate_limit_error() -> None:
     async def handler(_: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -117,5 +144,21 @@ def test_search_repositories_raises_specific_rate_limit_error() -> None:
                 assert exc.reset_at == 1785747600
             else:
                 raise AssertionError("expected GitHubRateLimitError")
+
+    asyncio.run(run())
+
+
+def test_search_repositories_maps_transport_failure_to_github_error() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("timed out", request=request)
+
+    async def run() -> None:
+        async with GitHubClient(transport=httpx.MockTransport(handler)) as client:
+            try:
+                await client.search_repositories("language:Python")
+            except GitHubAPIError as exc:
+                assert "before receiving a response" in str(exc)
+            else:
+                raise AssertionError("expected GitHubAPIError")
 
     asyncio.run(run())

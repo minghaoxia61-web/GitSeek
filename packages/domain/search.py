@@ -65,6 +65,7 @@ class RetrievalSummary(BaseModel):
     fusion_strategy: Literal["rrf"] | None = None
     fusion_rank_constant: int | None = None
     channel_candidate_counts: dict[str, int] = Field(default_factory=dict)
+    channel_top_results: dict[str, list[str]] = Field(default_factory=dict)
     channel_latency_ms: dict[str, float] = Field(default_factory=dict)
     total_latency_ms: float | None = None
 

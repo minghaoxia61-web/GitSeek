@@ -15,11 +15,12 @@ def test_evaluation_endpoint_reports_real_parser_run() -> None:
     assert payload["metrics"][0]["key"] == "constraint_accuracy"
     assert payload["metrics"][0]["value"] >= 95
     assert len(payload["categories"]) == 8
-    assert payload["retrieval_dataset_version"] == "retrieval-relevance-v1"
+    assert payload["retrieval_dataset_version"] == "retrieval-relevance-v2"
     assert payload["retrieval_case_count"] == 100
     assert payload["relevance_judgment_count"] == 2300
     assert payload["preference_dataset_version"] == "retrieval-pairs-v1"
     assert payload["preference_pair_count"] == 20
+    assert payload["retrieval_snapshot_id"] == "test-split-2026-08-23-labels-v2-r4"
     metrics = {item["key"]: item for item in payload["metrics"]}
     assert metrics["recall_at_10"]["value"] >= 85
     assert metrics["ndcg_at_10"]["value"] >= 75
@@ -28,6 +29,18 @@ def test_evaluation_endpoint_reports_real_parser_run() -> None:
     assert metrics["ndcg_lift"]["value"] >= 0
     assert metrics["ndcg_95ci_lower"]["value"] >= 75
     assert metrics["pairwise_accuracy"]["value"] >= 80
+    assert metrics["local_rrf_ndcg_lift"]["value"] == -3.3
+    channel_experiments = {item["key"]: item for item in payload["channel_experiments"]}
+    assert channel_experiments["local_keyword"]["ndcg_at_10"] == 62.9
+    assert channel_experiments["local_semantic"]["ndcg_at_10"] == 93.1
+    assert channel_experiments["rrf_fusion"]["ndcg_at_10"] == 89.8
+    assert channel_experiments["final_reranker"]["ndcg_at_10"] == 94.0
+    assert payload["retrieval_diagnostics"]
+    assert {item["severity"] for item in payload["retrieval_diagnostics"]} <= {
+        "high",
+        "medium",
+        "low",
+    }
     experiments = {item["key"]: item for item in payload["experiments"]}
     assert set(experiments) == {
         "metadata_only",

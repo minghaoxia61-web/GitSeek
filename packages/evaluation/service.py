@@ -12,14 +12,20 @@ from packages.domain.evaluation import (
     EvaluationFailure,
     EvaluationMetric,
     EvaluationSummary,
+    RetrievalChannelExperiment,
+    RetrievalDiagnostic,
 )
 from packages.github_client.schemas import GitHubRepository
 from packages.ranking import rank_repositories
 from packages.retrieval import parse_search_constraints
 
+from .annotations import grades_for_query
+from .channels import evaluate_channel_snapshot
+
 DATASET_PATH = Path(__file__).parent / "datasets" / "parser-constraints-v2.json"
-RETRIEVAL_DATASET_PATH = Path(__file__).parent / "datasets" / "retrieval-relevance-v1.json"
+RETRIEVAL_DATASET_PATH = Path(__file__).parent / "datasets" / "retrieval-relevance-v2.json"
 PREFERENCE_DATASET_PATH = Path(__file__).parent / "datasets" / "retrieval-pairs-v1.json"
+CHANNEL_SNAPSHOT_PATH = Path(__file__).parent / "datasets" / "retrieval-channels-local-v2.json"
 CATEGORY_LABELS = {
     "language": "编程语言",
     "technology": "技术栈",
@@ -45,6 +51,13 @@ def _load_retrieval_dataset() -> dict[str, Any]:
 def _load_preference_dataset() -> dict[str, Any]:
     with PREFERENCE_DATASET_PATH.open(encoding="utf-8") as dataset_file:
         return json.load(dataset_file)
+
+
+def _load_channel_snapshot() -> dict[str, Any] | None:
+    if not CHANNEL_SNAPSHOT_PATH.exists():
+        return None
+    with CHANNEL_SNAPSHOT_PATH.open(encoding="utf-8") as snapshot_file:
+        return json.load(snapshot_file)
 
 
 def _bootstrap_lower_bound(values: list[float], *, samples: int = 1000) -> float:
@@ -100,11 +113,11 @@ def _retrieval_metrics() -> tuple[dict[str, float], str, int, int, str, int]:
         case_count = 0
         repositories_by_name = {item.full_name: item for item in repositories}
         for intent in dataset["intents"]:
-            grades = intent["grades"]
-            for query in intent["queries"]:
+            for query_number, query in enumerate(intent["queries"], start=1):
+                grades = grades_for_query(dataset, intent, query_number)
                 constraints = parse_search_constraints(query, today=reference_date)
-                relevant = {
-                    name
+                eligible_grades = {
+                    name: grade
                     for name, grade in grades.items()
                     if grade > 0
                     and (
@@ -120,10 +133,13 @@ def _retrieval_metrics() -> tuple[dict[str, float], str, int, int, str, int]:
                         )
                     )
                 }
+                relevant = {
+                    name for name, grade in eligible_grades.items() if grade >= 2
+                }
                 if not relevant:
                     continue
                 ideal_grades = sorted(
-                    (grade for name, grade in grades.items() if name in relevant),
+                    eligible_grades.values(),
                     reverse=True,
                 )[:10]
                 ideal_dcg = sum(
@@ -141,7 +157,7 @@ def _retrieval_metrics() -> tuple[dict[str, float], str, int, int, str, int]:
                 names = [item.full_name for item in ranked]
                 recalls.append(len(relevant.intersection(names)) / len(relevant))
                 dcg = sum(
-                    (2 ** grades.get(name, 0) - 1) / math.log2(rank + 1)
+                    (2 ** eligible_grades.get(name, 0) - 1) / math.log2(rank + 1)
                     for rank, name in enumerate(names, start=1)
                 )
                 ndcgs.append(dcg / ideal_dcg if ideal_dcg else 0.0)
@@ -285,6 +301,98 @@ def build_evaluation_summary() -> EvaluationSummary:
         preference_version,
         preference_pairs,
     ) = _retrieval_metrics()
+    channel_snapshot = _load_channel_snapshot()
+    channel_report = (
+        evaluate_channel_snapshot(channel_snapshot, _load_retrieval_dataset())
+        if channel_snapshot is not None
+        else None
+    )
+    metrics = [
+        EvaluationMetric(
+            key="constraint_accuracy",
+            label="约束字段准确率",
+            value=accuracy,
+            unit="%",
+            target=95.0,
+            passed=accuracy >= 95.0,
+        ),
+        EvaluationMetric(
+            key="case_pass_rate",
+            label="完整用例通过率",
+            value=case_rate,
+            unit="%",
+            target=90.0,
+            passed=case_rate >= 90.0,
+        ),
+        EvaluationMetric(
+            key="recall_at_10",
+            label="Recall@10",
+            value=retrieval["recall_at_10"],
+            unit="%",
+            target=85.0,
+            passed=retrieval["recall_at_10"] >= 85.0,
+        ),
+        EvaluationMetric(
+            key="ndcg_at_10",
+            label="nDCG@10",
+            value=retrieval["ndcg_at_10"],
+            unit="%",
+            target=75.0,
+            passed=retrieval["ndcg_at_10"] >= 75.0,
+        ),
+        EvaluationMetric(
+            key="mrr_at_10",
+            label="MRR@10",
+            value=retrieval["mrr_at_10"],
+            unit="%",
+            target=80.0,
+            passed=retrieval["mrr_at_10"] >= 80.0,
+        ),
+        EvaluationMetric(
+            key="keyword_ndcg_at_10",
+            label="关键词基线 nDCG@10",
+            value=retrieval["keyword_ndcg_at_10"],
+            unit="%",
+            target=75.0,
+            passed=retrieval["keyword_ndcg_at_10"] >= 75.0,
+        ),
+        EvaluationMetric(
+            key="ndcg_lift",
+            label="向量混排提升",
+            value=retrieval["ndcg_lift"],
+            unit="pp",
+            target=5.0,
+            passed=retrieval["ndcg_lift"] >= 5.0,
+        ),
+        EvaluationMetric(
+            key="ndcg_95ci_lower",
+            label="nDCG@10 95% CI 下界",
+            value=retrieval["ndcg_95ci_lower"],
+            unit="%",
+            target=75.0,
+            passed=retrieval["ndcg_95ci_lower"] >= 75.0,
+        ),
+        EvaluationMetric(
+            key="pairwise_accuracy",
+            label="成对偏好准确率",
+            value=retrieval["pairwise_accuracy"],
+            unit="%",
+            target=80.0,
+            passed=retrieval["pairwise_accuracy"] >= 80.0,
+        ),
+    ]
+    if channel_report is not None:
+        rrf_lift = channel_report["rrf_ndcg_lift_vs_best_channel"]
+        metrics.append(
+            EvaluationMetric(
+                key="local_rrf_ndcg_lift",
+                label="本地双通道 RRF nDCG 提升",
+                value=rrf_lift,
+                unit="pp",
+                target=0.0,
+                passed=rrf_lift >= 0.0,
+            )
+        )
     return EvaluationSummary(
         version="parser-rules-v3",
         dataset_version=dataset["version"],
@@ -295,80 +403,30 @@ def build_evaluation_summary() -> EvaluationSummary:
         relevance_judgment_count=judgments,
         preference_dataset_version=preference_version,
         preference_pair_count=preference_pairs,
-        metrics=[
-            EvaluationMetric(
-                key="constraint_accuracy",
-                label="约束字段准确率",
-                value=accuracy,
-                unit="%",
-                target=95.0,
-                passed=accuracy >= 95.0,
-            ),
-            EvaluationMetric(
-                key="case_pass_rate",
-                label="完整用例通过率",
-                value=case_rate,
-                unit="%",
-                target=90.0,
-                passed=case_rate >= 90.0,
-            ),
-            EvaluationMetric(
-                key="recall_at_10",
-                label="Recall@10",
-                value=retrieval["recall_at_10"],
-                unit="%",
-                target=85.0,
-                passed=retrieval["recall_at_10"] >= 85.0,
-            ),
-            EvaluationMetric(
-                key="ndcg_at_10",
-                label="nDCG@10",
-                value=retrieval["ndcg_at_10"],
-                unit="%",
-                target=75.0,
-                passed=retrieval["ndcg_at_10"] >= 75.0,
-            ),
-            EvaluationMetric(
-                key="mrr_at_10",
-                label="MRR@10",
-                value=retrieval["mrr_at_10"],
-                unit="%",
-                target=80.0,
-                passed=retrieval["mrr_at_10"] >= 80.0,
-            ),
-            EvaluationMetric(
-                key="keyword_ndcg_at_10",
-                label="关键词基线 nDCG@10",
-                value=retrieval["keyword_ndcg_at_10"],
-                unit="%",
-                target=75.0,
-                passed=retrieval["keyword_ndcg_at_10"] >= 75.0,
-            ),
-            EvaluationMetric(
-                key="ndcg_lift",
-                label="向量混排提升",
-                value=retrieval["ndcg_lift"],
-                unit="pp",
-                target=5.0,
-                passed=retrieval["ndcg_lift"] >= 5.0,
-            ),
-            EvaluationMetric(
-                key="ndcg_95ci_lower",
-                label="nDCG@10 95% CI 下界",
-                value=retrieval["ndcg_95ci_lower"],
-                unit="%",
-                target=75.0,
-                passed=retrieval["ndcg_95ci_lower"] >= 75.0,
-            ),
-            EvaluationMetric(
-                key="pairwise_accuracy",
-                label="成对偏好准确率",
-                value=retrieval["pairwise_accuracy"],
-                unit="%",
-                target=80.0,
-                passed=retrieval["pairwise_accuracy"] >= 80.0,
-            ),
-        ],
+        retrieval_snapshot_id=(channel_report["snapshot_id"] if channel_report else None),
+        channel_experiments=(
+            [
+                RetrievalChannelExperiment(
+                    key=key,
+                    label={
+                        "local_keyword": "本地关键词召回",
+                        "local_semantic": "本地语义召回",
+                        "rrf_fusion": "RRF 融合",
+                        "final_reranker": "最终重排",
+                    }.get(key, key),
+                    **values,
+                )
+                for key, values in channel_report["variants"].items()
+            ]
+            if channel_report
+            else []
+        ),
+        retrieval_diagnostics=(
+            [RetrievalDiagnostic.model_validate(item) for item in channel_report["diagnostics"]]
+            if channel_report
+            else []
+        ),
+        metrics=metrics,
         experiments=[
             EvaluationExperiment(
                 key=key,

@@ -112,6 +112,12 @@ class ContributionIssueRecord(Base):
     labels: Mapped[list[str]] = mapped_column(JSON, default=list)
     assigned: Mapped[bool] = mapped_column(Boolean, default=False)
     comments: Mapped[int] = mapped_column(Integer, default=0)
+    github_created_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    response_status: Mapped[str] = mapped_column(String(20), default="unknown")
+    first_maintainer_response_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )
+    maintainer_response_hours: Mapped[float | None] = mapped_column(Float)
     difficulty: Mapped[str] = mapped_column(String(20))
     score: Mapped[float] = mapped_column(Float)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

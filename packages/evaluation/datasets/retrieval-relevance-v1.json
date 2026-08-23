@@ -1,5 +1,9 @@
 {
   "version": "retrieval-relevance-v1",
+  "schema_version": "retrieval-relevance-v1",
+  "annotation_status": "single-curator",
+  "split_policy": "intent-group-70-10-20",
+  "label_provenance": "primary-curator-explicit-positive-implicit-zero",
   "reference_date": "2026-08-01",
   "repositories": [
     {"full_name":"fastapi/fastapi","description":"FastAPI framework, high performance, easy to learn","language":"Python","topics":["fastapi","api","web"],"license":"MIT","stars":90000,"open_issues":800},

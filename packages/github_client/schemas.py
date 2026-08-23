@@ -126,7 +126,18 @@ class GitHubIssue(BaseModel):
     locked: bool = False
     created_at: datetime
     updated_at: datetime
+    user: GitHubAssignee | None = None
     pull_request: dict[str, object] | None = None
+
+
+class GitHubIssueComment(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: int
+    html_url: str
+    created_at: datetime
+    user: GitHubAssignee
+    author_association: str = "NONE"
 
 
 class GitHubRelease(BaseModel):

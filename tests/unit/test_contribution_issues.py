@@ -5,7 +5,12 @@ from fastapi.testclient import TestClient
 from apps.api.dependencies import get_github_client
 from apps.api.main import app
 from packages.contribution import ContributionIssueService
-from packages.github_client.schemas import GitHubIssue, GitHubRepository, GitHubUser
+from packages.github_client.schemas import (
+    GitHubIssue,
+    GitHubIssueComment,
+    GitHubRepository,
+    GitHubUser,
+)
 
 
 class StubIssueClient:
@@ -58,6 +63,60 @@ def test_issue_service_excludes_claimed_work_and_scores_beginner_issue() -> None
     assert len(result.issues) == 1
     assert result.issues[0].difficulty == "easy"
     assert result.issues[0].score >= 90
+
+
+class ResponseEvidenceClient(StubIssueClient):
+    async def list_issue_comments(
+        self,
+        owner: str,
+        repo: str,
+        issue_number: int,
+        *,
+        per_page: int = 30,
+    ) -> list[GitHubIssueComment]:
+        assert (owner, repo, issue_number, per_page) == ("example", "demo", 1, 30)
+        return [
+            GitHubIssueComment.model_validate(
+                {
+                    "id": 101,
+                    "html_url": "https://github.com/example/demo/issues/1#issuecomment-101",
+                    "created_at": "2026-07-02T00:00:00Z",
+                    "user": {"login": "maintainer"},
+                    "author_association": "MEMBER",
+                }
+            )
+        ]
+
+
+def test_issue_service_scores_verified_maintainer_response_time() -> None:
+    result = asyncio.run(
+        ContributionIssueService(ResponseEvidenceClient()).recommend("example", "demo")
+    )
+
+    issue = result.issues[0]
+    assert issue.response_status == "fast"
+    assert issue.maintainer_response_hours == 24
+    assert issue.first_maintainer_response_at is not None
+    assert any("24 小时" in reason for reason in issue.reasons)
+    assert "30 条" in result.limitations[1]
+
+
+class UnansweredIssueClient(ResponseEvidenceClient):
+    async def list_issue_comments(self, *args, **kwargs) -> list[GitHubIssueComment]:
+        del args, kwargs
+        return []
+
+
+def test_issue_service_flags_old_issue_without_maintainer_response() -> None:
+    result = asyncio.run(
+        ContributionIssueService(UnansweredIssueClient()).recommend("example", "demo")
+    )
+
+    issue = result.issues[0]
+    assert issue.response_status == "unanswered"
+    assert issue.maintainer_response_hours is None
+    assert issue.score < 90
+    assert any("未观察到维护者回应" in risk for risk in issue.risks)
 
 
 async def override_issue_client():

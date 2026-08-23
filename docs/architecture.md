@@ -60,7 +60,7 @@ Chinese query -> rule-based constraints + free bilingual term expansion
 Language, license, archive state, and activity date are hard constraints. A candidate with missing
 or conflicting evidence is excluded instead of letting a soft relevance score override the user's
 request. The ranking score uses only fields returned by repository search and labels itself
-`hybrid-rrf-v11`; it blends deterministic metadata scoring with a cached local semantic vector and
+`hybrid-rrf-v12`; it blends deterministic metadata scoring with a cached local semantic vector and
 does not claim that README, tests, or contribution instructions exist before investigation.
 Each recall channel keeps its own ordering. Reciprocal-rank fusion combines those orderings without
 pretending that PostgreSQL relevance, local cosine similarity, and GitHub Search expose comparable
@@ -76,7 +76,7 @@ Agent searches may request an external semantic ranker. Query and repository tex
 batches through an OpenAI-compatible embeddings endpoint, then blended with the same deterministic
 metadata score. Repository vectors are stored by model and content hash; only new or changed content
 is embedded again. Provider errors never bypass hard filters: the request falls back to
-`hybrid-rrf-v11`, while successful external ranking is identified as `hybrid-external-rrf-v12`.
+`hybrid-rrf-v12`, while successful external ranking is identified as `hybrid-external-rrf-v13`.
 The language model planner and embedding provider use separate credentials and endpoints.
 
 ## On-demand repository investigation

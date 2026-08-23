@@ -11,6 +11,7 @@ from packages.domain.search import (
 )
 from packages.embeddings import EmbeddingAPIError, ExternalEmbeddingService
 from packages.github_client import GitHubAPIError, GitHubClient
+from packages.observability import runtime_metrics
 from packages.persistence import ProductPersistence
 from packages.ranking import rank_repositories, reciprocal_rank_fusion
 from packages.retrieval import (
@@ -20,8 +21,8 @@ from packages.retrieval import (
     parse_search_constraints,
 )
 
-LOCAL_RANKING_VERSION = "hybrid-rrf-v11"
-EXTERNAL_RANKING_VERSION = "hybrid-external-rrf-v12"
+LOCAL_RANKING_VERSION = "hybrid-rrf-v12"
+EXTERNAL_RANKING_VERSION = "hybrid-external-rrf-v13"
 RRF_RANK_CONSTANT = 60
 
 
@@ -93,6 +94,14 @@ class SearchService:
                 limit=request.limit,
             )
             if cached is not None:
+                cache_duration_ms = round((perf_counter() - search_started) * 1000, 2)
+                cached.retrieval.total_latency_ms = cache_duration_ms
+                runtime_metrics.record_search(
+                    cache_hit=True,
+                    github_attempted=False,
+                    github_degraded=False,
+                    total_duration_ms=cache_duration_ms,
+                )
                 return cached
         indexed = []
         if self._repository_index is not None:
@@ -190,7 +199,7 @@ class SearchService:
             list(candidates.values()),
             constraints,
             limit=request.limit,
-            query=" ".join([request.query, *effective_search_terms]),
+            query=request.query,
             semantic_scores=semantic_scores,
             required_search_terms=inferred_search_terms[:2],
             repository_adjustments=repository_adjustments,
@@ -227,6 +236,9 @@ class SearchService:
                 channel_candidate_counts={
                     channel: len(items) for channel, items in channel_rankings.items()
                 },
+                channel_top_results={
+                    channel: items[:10] for channel, items in channel_rankings.items()
+                },
                 channel_latency_ms=channel_latency_ms,
                 total_latency_ms=round((perf_counter() - search_started) * 1000, 2),
             ),
@@ -236,4 +248,11 @@ class SearchService:
             if not saved:
                 response.retrieval.persistence_status = "unavailable"
                 response.retrieval.persistence_error = self._persistence.last_error
+        runtime_metrics.record_search(
+            cache_hit=False,
+            github_attempted=True,
+            github_degraded=github_status == "unavailable",
+            total_duration_ms=response.retrieval.total_latency_ms or 0.0,
+            channel_latency_ms=channel_latency_ms,
+        )
         return response

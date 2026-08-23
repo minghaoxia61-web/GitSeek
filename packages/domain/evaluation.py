@@ -37,6 +37,23 @@ class EvaluationExperiment(BaseModel):
     mrr_at_10: float
 
 
+class RetrievalChannelExperiment(EvaluationExperiment):
+    query_count: int
+    coverage: float
+
+
+class RetrievalDiagnostic(BaseModel):
+    query_id: str
+    query: str
+    category: str
+    severity: Literal["high", "medium", "low"]
+    summary: str
+    expected_repositories: list[str] = Field(default_factory=list)
+    missing_repositories: list[str] = Field(default_factory=list)
+    evidence: dict[str, float] = Field(default_factory=dict)
+    suggestion: str
+
+
 class EvaluationSummary(BaseModel):
     version: str
     dataset_version: str
@@ -47,6 +64,9 @@ class EvaluationSummary(BaseModel):
     relevance_judgment_count: int = 0
     preference_dataset_version: str | None = None
     preference_pair_count: int = 0
+    retrieval_snapshot_id: str | None = None
+    channel_experiments: list[RetrievalChannelExperiment] = Field(default_factory=list)
+    retrieval_diagnostics: list[RetrievalDiagnostic] = Field(default_factory=list)
     metrics: list[EvaluationMetric]
     experiments: list[EvaluationExperiment] = Field(default_factory=list)
     categories: list[EvaluationCategory] = Field(default_factory=list)

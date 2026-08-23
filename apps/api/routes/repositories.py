@@ -84,12 +84,29 @@ async def recommend_contribution_issues(
             max_age=None,
         )
         if stale is not None:
-            return stale
+            return stale.model_copy(
+                update={
+                    "data_status": "stale",
+                    "degradation_reason": "github_rate_limit",
+                }
+            )
         raise HTTPException(
             status_code=429,
             detail={"message": "GitHub rate limit exceeded", "reset_at": exc.reset_at},
         ) from exc
     except GitHubAPIError as exc:
+        stale = persistence.load_cached_issues(
+            f"{owner}/{repo}",
+            limit=bounded_limit,
+            max_age=None,
+        )
+        if stale is not None:
+            return stale.model_copy(
+                update={
+                    "data_status": "stale",
+                    "degradation_reason": "github_unavailable",
+                }
+            )
         raise HTTPException(status_code=502, detail="GitHub issue lookup failed") from exc
 
 

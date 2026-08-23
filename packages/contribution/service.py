@@ -10,12 +10,13 @@ from packages.domain.contribution import (
     ContributionIssueResponse,
     DeveloperProfile,
 )
-from packages.github_client import GitHubClient
-from packages.github_client.schemas import GitHubIssue
+from packages.github_client import GitHubAPIError, GitHubClient
+from packages.github_client.schemas import GitHubIssue, GitHubIssueComment
 
 BEGINNER_LABELS = {"good first issue", "good-first-issue", "beginner", "first-timers-only"}
 HELP_LABELS = {"help wanted", "help-wanted"}
 RISK_LABELS = {"security", "breaking change", "architecture", "migration"}
+MAINTAINER_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 SKILL_ALIASES = {
     "typescript": {"typescript", " ts ", ".ts", "react", "next.js", "nextjs"},
     "javascript": {"javascript", " js ", ".js", "node.js", "nodejs"},
@@ -125,10 +126,73 @@ def _score_issue(issue: GitHubIssue) -> ContributionIssue | None:
         labels=labels,
         comments=issue.comments,
         updated_at=issue.updated_at,
+        created_at=issue.created_at,
         difficulty=difficulty,
         score=max(0.0, min(round(score, 1), 100.0)),
         reasons=reasons,
         risks=risks,
+    )
+
+
+def _add_response_evidence(
+    recommendation: ContributionIssue,
+    issue: GitHubIssue,
+    comments: list[GitHubIssueComment],
+    *,
+    now: datetime,
+) -> ContributionIssue:
+    reporter = issue.user.login if issue.user else None
+    maintainer_comments = sorted(
+        (
+            comment
+            for comment in comments
+            if comment.author_association.upper() in MAINTAINER_ASSOCIATIONS
+            and (reporter is None or comment.user.login != reporter)
+        ),
+        key=lambda comment: comment.created_at,
+    )
+    reasons = list(recommendation.reasons)
+    risks = list(recommendation.risks)
+    score = recommendation.score
+    response_at = None
+    response_hours = None
+    if maintainer_comments:
+        response_at = maintainer_comments[0].created_at
+        response_hours = round(
+            max((response_at - issue.created_at).total_seconds() / 3600, 0.0),
+            1,
+        )
+        if response_hours <= 48:
+            response_status = "fast"
+            score += 10
+            reasons.append(f"维护者在 {response_hours:g} 小时内首次回应")
+        elif response_hours <= 168:
+            response_status = "normal"
+            score += 5
+            reasons.append(f"维护者在 {round(response_hours / 24, 1):g} 天内首次回应")
+        else:
+            response_status = "slow"
+            score -= 4
+            risks.append(f"维护者首次回应约耗时 {round(response_hours / 24):g} 天")
+    else:
+        response_status = "unanswered"
+        age_days = max((now - issue.created_at).days, 0)
+        if age_days >= 14:
+            score -= 12
+            risks.append(f"开放 {age_days} 天后仍未观察到维护者回应")
+        else:
+            risks.append("尚未观察到维护者回应，Issue 可能仍在等待分流")
+
+    return ContributionIssue.model_validate(
+        {
+            **recommendation.model_dump(),
+            "response_status": response_status,
+            "first_maintainer_response_at": response_at,
+            "maintainer_response_hours": response_hours,
+            "score": max(0.0, min(round(score, 1), 100.0)),
+            "reasons": reasons,
+            "risks": risks,
+        }
     )
 
 
@@ -146,12 +210,39 @@ class ContributionIssueService:
         issues = await self._client.list_repository_issues(owner, repo, state="open", per_page=100)
         recommendations = [item for issue in issues if (item := _score_issue(issue)) is not None]
         recommendations.sort(key=lambda item: (item.score, item.updated_at), reverse=True)
+        recommendations = recommendations[:limit]
+        issue_by_number = {issue.number: issue for issue in issues}
+        list_comments = getattr(self._client, "list_issue_comments", None)
+        if callable(list_comments):
+            now = datetime.now(UTC)
+
+            async def enrich(item: ContributionIssue) -> ContributionIssue:
+                try:
+                    comments = await list_comments(
+                        owner,
+                        repo,
+                        item.number,
+                        per_page=30,
+                    )
+                except GitHubAPIError:
+                    return item
+                return _add_response_evidence(
+                    item,
+                    issue_by_number[item.number],
+                    comments,
+                    now=now,
+                )
+
+            recommendations = await asyncio.gather(*(enrich(item) for item in recommendations))
+            recommendations.sort(key=lambda item: (item.score, item.updated_at), reverse=True)
         return ContributionIssueResponse(
             full_name=f"{owner}/{repo}",
             fetched_at=datetime.now(UTC),
-            issues=recommendations[:limit],
+            issues=recommendations,
             limitations=[
-                "难度来自标签、描述长度和讨论规模等静态信号",
+                "难度来自标签、描述长度、讨论规模与有限响应样本等启发式信号",
+                "首次响应只检查每个候选 Issue 最早的 30 条公开评论，"
+                "并依据 GitHub 作者关系识别维护者",
                 "开始贡献前仍需阅读完整讨论并确认没有关联 Pull Request",
             ],
         )

@@ -11,6 +11,7 @@ export function DetailView({
   status,
   issues,
   issueStatus,
+  issueDataStatus,
   onBack,
   onCompare,
   onRefresh,
@@ -21,6 +22,7 @@ export function DetailView({
   status: "loading" | "ready" | "unavailable";
   issues: ContributionIssue[];
   issueStatus: "loading" | "ready" | "unavailable";
+  issueDataStatus: "fresh" | "stale";
   onBack: () => void;
   onCompare: () => void;
   onRefresh: () => void;
@@ -54,6 +56,18 @@ export function DetailView({
   ] as const;
   const risks = investigation?.risks ?? repo.risks;
   const activity = investigation?.activity;
+  const responseSamples = issues.filter((issue) =>
+    ["fast", "normal", "slow", "unanswered"].includes(issue.response_status),
+  );
+  const responseHours = responseSamples
+    .flatMap((issue) => issue.maintainer_response_hours == null ? [] : [issue.maintainer_response_hours])
+    .sort((left, right) => left - right);
+  const medianResponseHours = responseHours.length
+    ? responseHours.length % 2
+      ? responseHours[Math.floor(responseHours.length / 2)]
+      : (responseHours[responseHours.length / 2 - 1] + responseHours[responseHours.length / 2]) / 2
+    : null;
+  const unansweredIssues = responseSamples.filter((issue) => issue.response_status === "unanswered").length;
   const verifiedSignalCount = signalRows.filter(([, value]) => value === true).length;
   const decisionTitle = status !== "ready"
     ? "等待仓库核验"
@@ -113,6 +127,7 @@ export function DetailView({
 
       {status === "loading" && <div className="detail-status"><i className="spinner" /> 正在读取社区档案、仓库目录、工作流和 README…</div>}
       {status === "unavailable" && <div className="notice"><Signal tone="amber" /><span>实时调查接口暂不可用，当前保留搜索阶段数据；本地 API 启动后重新打开档案即可恢复真实证据。</span></div>}
+      {issueDataStatus === "stale" && <div className="notice"><Signal tone="amber" /><span>GitHub 当前限流或暂不可用，Issue 列表来自带时间戳的旧缓存，请在开始任务前到 GitHub 再次确认。</span></div>}
 
       <section className="decision-brief" aria-label="项目判断摘要">
         <div className="decision-verdict">
@@ -164,6 +179,7 @@ export function DetailView({
               <div><span>最近发布</span><strong>{activity?.latest_release_at?.slice(0, 10) ?? "未发现"}</strong><small>{activity?.median_release_interval_days != null ? `发布间隔中位数 ${activity.median_release_interval_days} 天` : `${activity?.releases_sampled ?? 0} 个正式版本样本`}</small></div>
               <div><span>PR 处理</span><strong>{activity?.median_pull_request_resolution_hours != null ? `${Math.round(activity.median_pull_request_resolution_hours / 24)} 天` : "未知"}</strong><small>{activity?.merged_pull_request_ratio != null ? `${Math.round(activity.merged_pull_request_ratio * 100)}% 样本已合并` : `${activity?.pull_requests_sampled ?? 0} 个关闭 PR 样本`}</small></div>
               <div><span>贡献连续性</span><strong>{activity?.contributor_continuity === "distributed" ? "较分散" : activity?.contributor_continuity === "concentrated" ? "较集中" : "未知"}</strong><small>{activity?.contributors_sampled ? `${activity.contributors_sampled} 位贡献者样本` : "样本不足"}</small></div>
+              <div><span>Issue 首次回应</span><strong>{medianResponseHours == null ? "未知" : medianResponseHours < 48 ? `${Math.round(medianResponseHours)} 小时` : `${Math.round(medianResponseHours / 24)} 天`}</strong><small>{responseSamples.length ? `${responseHours.length}/${responseSamples.length} 个候选观察到维护者回应${unansweredIssues ? `，${unansweredIssues} 个未回应` : ""}` : "候选 Issue 响应样本不足"}</small></div>
             </div>
           </article>
 
@@ -177,9 +193,9 @@ export function DetailView({
           </article>
 
           <article className="panel issues-panel">
-            <div className="panel-title"><span>适合开始的 Issue</span><small>{issueStatus === "ready" ? `${issues.length} 个候选` : issueStatus === "loading" ? "正在刷新状态" : "暂不可用"}</small></div>
+            <div className="panel-title"><span>适合开始的 Issue</span><small>{issueStatus === "ready" ? `${issues.length} 个候选${issueDataStatus === "stale" ? " · 缓存" : ""}` : issueStatus === "loading" ? "正在刷新状态" : "暂不可用"}</small></div>
             {issueStatus === "loading" && <div className="issues-loading"><i className="spinner" /> 正在检查开放状态、认领情况与任务描述…</div>}
-            {issueStatus === "ready" && issues.map((issue) => <a className="issue-row" href={issue.html_url} target="_blank" rel="noreferrer" key={issue.number} onClick={() => onFeedback("opened_issue")}><span className={`difficulty ${issue.difficulty}`}>{issue.difficulty === "easy" ? "容易" : issue.difficulty === "medium" ? "中等" : "较难"}</span><div><b>#{issue.number} {issue.title}</b><p>{issue.reasons.join(" · ")}{issue.risks[0] ? `；${issue.risks[0]}` : ""}</p></div><strong>{issue.score.toFixed(0)}</strong></a>)}
+            {issueStatus === "ready" && issues.map((issue) => <a className="issue-row" href={issue.html_url} target="_blank" rel="noreferrer" key={issue.number} onClick={() => onFeedback("opened_issue")}><span className={`difficulty ${issue.difficulty}`}>{issue.difficulty === "easy" ? "容易" : issue.difficulty === "medium" ? "中等" : "较难"}</span><div><b>#{issue.number} {issue.title}</b><p>{issue.reasons.join(" · ")}{!issue.response_status || issue.response_status === "unknown" ? " · 响应时间未核验" : ""}{issue.risks[0] ? `；${issue.risks[0]}` : ""}</p></div><strong>{issue.score.toFixed(0)}</strong></a>)}
             {issueStatus === "ready" && !issues.length && <p className="empty-copy">当前没有找到未认领且信息足够的开放 Issue。GitSeek 不会为了填满列表推荐不确定任务。</p>}
             {issueStatus === "unavailable" && <p className="empty-copy">Issue 状态暂时无法刷新，请稍后再试或直接到 GitHub 查看。</p>}
           </article>

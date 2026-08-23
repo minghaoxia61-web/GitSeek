@@ -20,6 +20,8 @@ complete only when it has an implemented user path and a repeatable verification
 - Maintenance investigation for published release cadence, closed-PR resolution and merge ratios,
   and contributor activity distribution, with per-source degradation.
 - Refreshed open-Issue recommendations that exclude pull requests, assigned work, and locked items.
+- Bounded first-maintainer-response evidence for final Issue candidates, using public comment times
+  and GitHub author relationships with per-Issue degradation and persisted response fields.
 - Evidence links, fetch times, confidence, score breakdowns, reasons, risks, and visible degradation.
 - Result comparison for up to three repositories.
 - Device-local and server-backed saved repositories.
@@ -53,6 +55,8 @@ complete only when it has an implemented user path and a repeatable verification
   Actions quality gate for backend, retrieval, desktop, and mobile checks.
 - A Windows remote-interface bootstrap that loads normal web updates without reinstalling and falls
   back to the packaged interface when the hosted app is unavailable.
+- Deterministic GitHub fault injection in CI covering search timeout fallback, per-Issue failure
+  isolation, rate-limit recovery, and visibly stale cache responses.
 
 ## Partial
 
@@ -68,8 +72,9 @@ complete only when it has an implemented user path and a repeatable verification
   external-provider comparison remains optional for deployments that already have a provider.
 - Deep investigation: the Agent investigates the top 1-3 repositories rather than the planned top
   20, to keep public-demo latency and GitHub usage bounded.
-- Health score: documentation, engineering, release cadence, PR interaction, and contributor
-  distribution signals exist; first maintainer response time still requires timeline-event sampling.
+- Health score: documentation, engineering, release cadence, PR resolution, contributor
+  distribution, and sampled Issue first-maintainer-response signals exist. The Issue sample remains
+  bounded to control GitHub API usage and is not a repository-wide service-level metric.
 - Search progress: bounded steps stream while the Agent runs and the browser can cancel background
   refinement; server-side detached job resumption is not yet implemented.
 - Evaluation: a versioned 40-case constraint suite, 100-case curated relevance suite, and 20-pair
@@ -77,8 +82,8 @@ complete only when it has an implemented user path and a repeatable verification
   ablations. Independent second-annotator review is still absent.
 - Observability: Agent traces, request IDs, server timing, path P50/P95 and error rates, plus model
   and embedding call/token/configured-cost metrics exist; version-trend dashboards are not complete.
-- Reliability: model and GitHub degradation and per-process public rate limiting are visible;
-  distributed rate limiting and broader fault injection remain.
+- Reliability: model and GitHub degradation, stale-cache status, deterministic GitHub failure
+  scenarios, and per-process public rate limiting are visible; distributed rate limiting remains.
 
 ## Not implemented in V1 yet
 
@@ -96,7 +101,7 @@ complete only when it has an implemented user path and a repeatable verification
 
 ## Recommended implementation order
 
-1. Add second-annotator review to the relevance and preference suites.
-2. Capture timestamped per-channel rankings so RRF lift can be evaluated offline.
-3. Add first-response timing from Issue/PR timeline events.
-4. Expand production fault-injection checks and distributed rate limiting.
+1. Add second-annotator review to the relevance and preference suites when another reviewer exists.
+2. Add distributed rate limiting if deployment moves beyond one API instance.
+3. Add a longer-lived aggregate of Issue response evidence after enough snapshots accumulate.
+4. Compare the explainable reranker with a trained LTR model only after labels are sufficient.

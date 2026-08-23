@@ -11,6 +11,10 @@ class ContributionIssue(BaseModel):
     labels: list[str] = Field(default_factory=list)
     comments: int = 0
     updated_at: datetime
+    created_at: datetime
+    response_status: Literal["fast", "normal", "slow", "unanswered", "unknown"] = "unknown"
+    first_maintainer_response_at: datetime | None = None
+    maintainer_response_hours: float | None = Field(default=None, ge=0)
     difficulty: Literal["easy", "medium", "hard"]
     score: float = Field(ge=0, le=100)
     reasons: list[str] = Field(default_factory=list)
@@ -21,6 +25,8 @@ class ContributionIssueResponse(BaseModel):
     full_name: str
     fetched_at: datetime
     issues: list[ContributionIssue]
+    data_status: Literal["fresh", "stale"] = "fresh"
+    degradation_reason: Literal["github_rate_limit", "github_unavailable"] | None = None
     limitations: list[str] = Field(default_factory=list)
 
 

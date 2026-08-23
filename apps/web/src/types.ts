@@ -111,6 +111,10 @@ export type ContributionIssue = {
   labels: string[];
   comments: number;
   updated_at: string;
+  created_at: string;
+  response_status: "fast" | "normal" | "slow" | "unanswered" | "unknown";
+  first_maintainer_response_at: string | null;
+  maintainer_response_hours: number | null;
   difficulty: "easy" | "medium" | "hard";
   score: number;
   reasons: string[];
@@ -121,6 +125,8 @@ export type ContributionIssueResponse = {
   full_name: string;
   fetched_at: string;
   issues: ContributionIssue[];
+  data_status: "fresh" | "stale";
+  degradation_reason: "github_rate_limit" | "github_unavailable" | null;
   limitations: string[];
 };
 
@@ -133,6 +139,7 @@ export type EvaluationSummary = {
   relevance_judgment_count?: number;
   preference_dataset_version?: string | null;
   preference_pair_count?: number;
+  retrieval_snapshot_id?: string | null;
   generated_at: string;
   metrics: Array<{
     key: string;
@@ -149,6 +156,26 @@ export type EvaluationSummary = {
     ndcg_at_10: number;
     mrr_at_10: number;
   }>;
+  channel_experiments?: Array<{
+    key: string;
+    label: string;
+    query_count: number;
+    coverage: number;
+    recall_at_10: number;
+    ndcg_at_10: number;
+    mrr_at_10: number;
+  }>;
+  retrieval_diagnostics?: Array<{
+    query_id: string;
+    query: string;
+    category: string;
+    severity: "high" | "medium" | "low";
+    summary: string;
+    expected_repositories: string[];
+    missing_repositories: string[];
+    evidence: Record<string, number>;
+    suggestion: string;
+  }>;
   categories?: Array<{
     key: string;
     label: string;
@@ -157,6 +184,52 @@ export type EvaluationSummary = {
     accuracy: number;
   }>;
   failures: Array<{ case_id?: string; category?: string; case: string; expected: string; actual: string }>;
+};
+
+export type RuntimeMetricsSnapshot = {
+  started_at: string;
+  uptime_seconds: number;
+  paths: Record<string, {
+    requests: number;
+    errors: number;
+    error_rate: number;
+    average_duration_ms: number;
+    p50_duration_ms: number;
+    p95_duration_ms: number;
+  }>;
+  external_services: Record<string, {
+    calls: number;
+    errors: number;
+    error_rate: number;
+    input_tokens: number;
+    output_tokens: number;
+    estimated_cost_usd: number;
+    average_duration_ms: number;
+  }>;
+  search: {
+    searches: number;
+    cache_hits: number;
+    cache_hit_rate: number;
+    github_attempted_searches: number;
+    github_degraded_searches: number;
+    github_degradation_rate: number;
+    average_duration_ms: number;
+    p50_duration_ms: number;
+    p95_duration_ms: number;
+    channels: Record<string, {
+      calls: number;
+      average_duration_ms: number;
+      p50_duration_ms: number;
+      p95_duration_ms: number;
+    }>;
+    trend: Array<{
+      minute: string;
+      searches: number;
+      cache_hit_rate: number;
+      github_degradation_rate: number;
+      p95_duration_ms: number;
+    }>;
+  };
 };
 
 export type DeveloperProfile = {

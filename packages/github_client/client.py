@@ -8,6 +8,7 @@ from packages.github_client.schemas import (
     GitHubContentItem,
     GitHubContributor,
     GitHubIssue,
+    GitHubIssueComment,
     GitHubPullRequest,
     GitHubRelease,
     GitHubRepository,
@@ -104,11 +105,14 @@ class GitHubClient:
         }
         if sort:
             params["sort"] = sort
-        response = await self._client.get(
-            "/search/repositories",
-            params=params,
-            headers=headers,
-        )
+        try:
+            response = await self._client.get(
+                "/search/repositories",
+                params=params,
+                headers=headers,
+            )
+        except httpx.RequestError as exc:
+            raise GitHubAPIError("GitHub API request failed before receiving a response") from exc
 
         reset_at = _parse_optional_int(response.headers.get("x-ratelimit-reset"))
         if response.status_code in {403, 429}:
@@ -137,7 +141,10 @@ class GitHubClient:
         *,
         params: dict[str, str | int] | None = None,
     ) -> object:
-        response = await self._client.get(path, params=params)
+        try:
+            response = await self._client.get(path, params=params)
+        except httpx.RequestError as exc:
+            raise GitHubAPIError("GitHub API request failed before receiving a response") from exc
         reset_at = _parse_optional_int(response.headers.get("x-ratelimit-reset"))
         if response.status_code in {403, 429}:
             raise GitHubRateLimitError("GitHub API rate limit exceeded", reset_at=reset_at)
@@ -216,6 +223,22 @@ class GitHubClient:
         if not isinstance(payload, list):
             raise GitHubAPIError("Expected an issue listing")
         return [GitHubIssue.model_validate(item) for item in payload]
+
+    async def list_issue_comments(
+        self,
+        owner: str,
+        repo: str,
+        issue_number: int,
+        *,
+        per_page: int = 30,
+    ) -> list[GitHubIssueComment]:
+        payload = await self._get_json(
+            f"/repos/{owner}/{repo}/issues/{issue_number}/comments",
+            params={"per_page": max(1, min(per_page, 100))},
+        )
+        if not isinstance(payload, list):
+            raise GitHubAPIError("Expected an issue comment listing")
+        return [GitHubIssueComment.model_validate(item) for item in payload]
 
     async def list_releases(
         self, owner: str, repo: str, *, per_page: int = 10

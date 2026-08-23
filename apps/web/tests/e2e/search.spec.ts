@@ -84,7 +84,22 @@ async function mockApi(page: Page) {
     risks: ["开始前确认本地 Python 版本。"],
     limitations: ["只读取公开仓库信息。"],
   } }));
-  await page.route("**/api/v1/repos/fastapi/fastapi/issues?limit=5", (route) => route.fulfill({ json: { issues: [] } }));
+  await page.route("**/api/v1/repos/fastapi/fastapi/issues?limit=5", (route) => route.fulfill({ json: { data_status: "fresh", degradation_reason: null, issues: [{
+    number: 12,
+    title: "Improve the quick-start guide",
+    html_url: "https://github.com/fastapi/fastapi/issues/12",
+    labels: ["good first issue"],
+    comments: 2,
+    created_at: "2026-08-01T00:00:00Z",
+    updated_at: "2026-08-12T00:00:00Z",
+    response_status: "fast",
+    first_maintainer_response_at: "2026-08-02T00:00:00Z",
+    maintainer_response_hours: 24,
+    difficulty: "easy",
+    score: 96,
+    reasons: ["Issue 仍处于开放状态且未被认领", "维护者在 24 小时内首次回应"],
+    risks: [],
+  }], limitations: [] } }));
   await page.route("**/api/v1/agent/runs/stream", async (route) => {
     expect(route.request().postDataJSON()).toMatchObject({ embedding_mode: "local" });
     await route.fulfill({
@@ -153,4 +168,24 @@ test("puts a plain-language decision before detailed repository evidence", async
   await expect(summary.getByText("值得继续了解")).toBeVisible();
   await expect(summary.getByText("7 / 7")).toBeVisible();
   await expect(summary.getByText("活跃", { exact: true })).toBeVisible();
+  await expect(page.getByText("Issue 首次回应")).toBeVisible();
+  await expect(page.getByText("24 小时", { exact: true })).toBeVisible();
+});
+
+test("labels stale Issue evidence when GitHub refresh degrades", async ({ page }) => {
+  await page.unroute("**/api/v1/repos/fastapi/fastapi/issues?limit=5");
+  await page.route("**/api/v1/repos/fastapi/fastapi/issues?limit=5", (route) => route.fulfill({
+    json: {
+      data_status: "stale",
+      degradation_reason: "github_unavailable",
+      issues: [],
+      limitations: [],
+    },
+  }));
+  const query = page.getByRole("textbox", { name: /描述用途/ });
+  await query.fill("适合初学者的 FastAPI 项目");
+  await page.getByRole("button", { name: /搜索项目/ }).click();
+  await page.getByRole("button", { name: /查看档案/ }).click();
+
+  await expect(page.getByText(/Issue 列表来自带时间戳的旧缓存/)).toBeVisible();
 });

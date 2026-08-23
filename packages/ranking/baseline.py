@@ -6,6 +6,8 @@ from packages.domain.search import Recommendation, SearchConstraints
 from packages.github_client.schemas import GitHubRepository
 from packages.ranking.semantic import semantic_similarity
 
+SEMANTIC_TERM_FALLBACK_THRESHOLD = 0.2
+
 
 def _constraint_matches(
     repository: GitHubRepository,
@@ -66,6 +68,15 @@ def _matches_any_search_term(
         if tokens and all(token.replace("-", " ") in normalized_corpus for token in tokens):
             return True
     return False
+
+
+def _matches_search_intent(repository: GitHubRepository, query: str | None) -> bool:
+    if not query:
+        return False
+    repository_text = " ".join(
+        [repository.name, repository.description or "", *repository.topics]
+    )
+    return semantic_similarity(query, repository_text) >= SEMANTIC_TERM_FALLBACK_THRESHOLD
 
 
 def _score(
@@ -158,9 +169,10 @@ def rank_repositories(
         matches = _constraint_matches(repository, constraints)
         if not _is_eligible(matches):
             continue
-        if required_search_terms and not _matches_any_search_term(
-            repository,
-            required_search_terms,
+        if (
+            required_search_terms
+            and not _matches_any_search_term(repository, required_search_terms)
+            and not _matches_search_intent(repository, query)
         ):
             continue
         score, breakdown = _score(
