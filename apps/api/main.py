@@ -33,7 +33,7 @@ def create_app() -> FastAPI:
     application.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_cors_origins,
-        allow_origin_regex=r"https://([a-z0-9-]+\.)*chatgpt\.site",
+        allow_origin_regex=r"https://(?:([a-z0-9-]+\.)*chatgpt\.site|minghaoxia61-web\.github\.io)",
         allow_credentials=False,
         allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
         allow_headers=["Content-Type"],

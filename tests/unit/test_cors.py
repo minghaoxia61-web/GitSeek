@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from apps.api.main import app
@@ -19,8 +20,14 @@ def test_tauri_origin_can_preflight_api_requests() -> None:
     assert "POST" in response.headers["access-control-allow-methods"]
 
 
-def test_public_sites_origin_can_preflight_api_requests() -> None:
-    origin = "https://openscout-gitseek.minghaoxia61.chatgpt.site"
+@pytest.mark.parametrize(
+    "origin",
+    [
+        "https://openscout-gitseek.minghaoxia61.chatgpt.site",
+        "https://minghaoxia61-web.github.io",
+    ],
+)
+def test_public_web_origin_can_preflight_api_requests(origin: str) -> None:
     with TestClient(app) as client:
         response = client.options(
             "/api/v1/agent/runs",
