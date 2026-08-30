@@ -3,7 +3,7 @@ import type { ConnectionStatus, View } from "../lib/types";
 import { navItems } from "../lib/utils";
 import { Signal } from "../components/ui";
 
-type IconName = "search" | "bookmark" | "list" | "chart" | "settings" | "compare" | "github" | "panel" | "user";
+type IconName = "search" | "bookmark" | "list" | "chart" | "settings" | "compare" | "github" | "panel" | "user" | "wrench";
 
 function ShellIcon({ name }: { name: IconName }) {
   const paths: Record<IconName, React.ReactNode> = {
@@ -15,6 +15,7 @@ function ShellIcon({ name }: { name: IconName }) {
     compare: <><path d="M8 3 4 7l4 4M4 7h16M16 21l4-4-4-4M20 17H4" /></>,
     github: <path d="M15 22v-3.9c.04-1-.36-1.8-1-2.3 3.3-.37 6.8-1.62 6.8-7.4 0-1.64-.58-2.98-1.55-4.03.16-.38.67-1.9-.15-3.97 0 0-1.27-.4-4.15 1.54A14.4 14.4 0 0 0 8 1.94C5.12 0 3.85.4 3.85.4c-.82 2.07-.31 3.59-.15 3.97A5.8 5.8 0 0 0 2.15 8.4c0 5.76 3.5 7.02 6.8 7.4-.42.37-.8 1.02-.94 1.98-.85.38-3 .99-4.32-1.24 0 0-.78-1.42-2.27-1.52 0 0-1.45-.02-.1.9 0 0 .97.45 1.64 2.14 0 0 .86 2.62 5 1.73V22" />,
     panel: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16M14 9l-2 3 2 3" /></>,
+    wrench: <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />,
     user: <><circle cx="12" cy="8" r="3.5" /><path d="M5 21a7 7 0 0 1 14 0" /></>,
   };
   return <svg className="shell-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
@@ -45,7 +46,7 @@ export function Shell({
   const [globalQuery, setGlobalQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const currentLabel = view === "discover" ? "搜索项目" : view === "saved" ? "我的收藏" : view === "evals" ? "质量记录" : view === "compare" ? "项目对比" : view === "settings" ? "设置" : view === "detail" ? "项目档案" : "搜索结果";
+  const currentLabel = view === "discover" ? "搜索项目" : view === "saved" ? "我的收藏" : view === "evals" ? "质量记录" : view === "compare" ? "项目对比" : view === "settings" ? "设置" : view === "detail" ? "项目档案" : view === "fixer" ? "修复 Agent" : "搜索结果";
 
   useEffect(() => {
     function handleKeydown(event: KeyboardEvent) {
@@ -103,7 +104,7 @@ export function Shell({
               aria-label={item.label}
               title={item.label}
             >
-              <ShellIcon name={item.id === "discover" ? "search" : "bookmark"} />
+              <ShellIcon name={item.id === "discover" ? "search" : item.id === "fixer" ? "wrench" : "bookmark"} />
               <span>{item.label}</span>
               {item.id === "saved" && savedCount > 0 && <em className="nav-count">{savedCount}</em>}
             </button>

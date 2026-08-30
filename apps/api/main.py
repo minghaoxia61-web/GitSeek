@@ -8,6 +8,7 @@ from apps.api.observability import PublicRateLimitMiddleware, RequestObservabili
 from apps.api.routes.agents import router as agents_router
 from apps.api.routes.evaluations import router as evaluations_router
 from apps.api.routes.feedback import router as feedback_router
+from apps.api.routes.fixer import router as fixer_router
 from apps.api.routes.health import router as health_router
 from apps.api.routes.jobs import router as jobs_router
 from apps.api.routes.repositories import router as repositories_router
@@ -47,6 +48,7 @@ def create_app() -> FastAPI:
     application.include_router(health_router)
     application.include_router(jobs_router)
     application.include_router(agents_router)
+    application.include_router(fixer_router)
     application.include_router(search_router)
     application.include_router(saved_router)
     application.include_router(repositories_router)

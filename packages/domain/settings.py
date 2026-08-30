@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     model_input_cost_per_million: float = 0.0
     model_output_cost_per_million: float = 0.0
     embedding_cost_per_million: float = 0.0
+    fixer_model: str | None = None
+    fixer_max_rounds: int = 5
+    fixer_token_budget: int = 200_000
+    fixer_input_cost_per_million: float = 0.0
+    fixer_output_cost_per_million: float = 0.0
+    sandbox_backend: str = "local"
+    agent_workspace_root: str | None = None
 
     @field_validator("database_url", mode="before")
     @classmethod

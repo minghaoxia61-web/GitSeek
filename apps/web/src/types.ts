@@ -1,4 +1,38 @@
-export type View = "discover" | "results" | "saved" | "detail" | "compare" | "evals" | "settings";
+export type View = "discover" | "results" | "saved" | "detail" | "compare" | "evals" | "fixer" | "settings";
+
+export type FixerRunStatus = "queued" | "running" | "succeeded" | "failed";
+
+export type FixerStep = {
+  seq: number;
+  round: number;
+  tool: string;
+  input: Record<string, unknown>;
+  output: string | null;
+  latency_ms: number;
+};
+
+export type FixerRun = {
+  run_id: string;
+  repo_full_name: string;
+  issue_url: string | null;
+  issue_number: number | null;
+  status: FixerRunStatus;
+  model: string | null;
+  max_rounds: number;
+  token_budget: number;
+  rounds: number;
+  token_in: number;
+  token_out: number;
+  cost_usd: number;
+  success: boolean | null;
+  failure_category: string | null;
+  summary: string | null;
+  error: string | null;
+  step_count?: number;
+  diff?: string | null;
+  created_at: string | null;
+  completed_at: string | null;
+};
 
 export type Recommendation = {
   rank: number;

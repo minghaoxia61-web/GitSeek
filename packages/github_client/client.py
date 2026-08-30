@@ -160,6 +160,10 @@ class GitHubClient:
         payload = await self._get_json(f"/repos/{owner}/{repo}")
         return GitHubRepository.model_validate(payload)
 
+    async def get_issue(self, owner: str, repo: str, issue_number: int) -> GitHubIssue:
+        payload = await self._get_json(f"/repos/{owner}/{repo}/issues/{issue_number}")
+        return GitHubIssue.model_validate(payload)
+
     async def get_user(self, username: str) -> GitHubUser:
         payload = await self._get_json(f"/users/{username}")
         return GitHubUser.model_validate(payload)

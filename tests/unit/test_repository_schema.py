@@ -10,10 +10,15 @@ def test_repository_schema_can_be_created_in_memory() -> None:
 
     table_names = set(Base.metadata.tables)
     assert table_names == {
+        "agent_bench_results",
+        "agent_code_chunks",
         "agent_runs",
         "agent_steps",
         "contribution_issues",
         "feedback",
+        "fixer_patches",
+        "fixer_runs",
+        "fixer_steps",
         "index_sync_cursors",
         "recommendations",
         "repositories",

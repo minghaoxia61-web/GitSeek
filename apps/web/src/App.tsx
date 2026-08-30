@@ -19,6 +19,7 @@ import { ResultsView } from "./pages/ResultsView";
 import { DetailView } from "./pages/DetailView";
 import { CompareView } from "./pages/CompareView";
 import { EvalsView } from "./pages/EvalsView";
+import { FixerAgentView } from "./pages/FixerAgentView";
 import { SavedView } from "./pages/SavedView";
 import { SettingsView } from "./pages/SettingsView";
 
@@ -299,6 +300,7 @@ export default function App() {
       {view === "detail" && selectedRepo && <DetailView repo={selectedRepo} investigation={investigation} status={investigationStatus} issues={issues} issueStatus={issueStatus} issueDataStatus={issueDataStatus} onBack={() => setView(detailParent)} onCompare={() => toggleCompare(selectedRepo.full_name)} onRefresh={() => refreshDetail(selectedRepo, true)} onFeedback={submitFeedback} />}
       {view === "compare" && <CompareView repos={compareRepos} onDiscover={() => setView(data.query ? "results" : "discover")} onDetail={(repo) => { setDetailParent(data.query ? "results" : "saved"); openDetail(repo); }} onRemove={toggleCompare} />}
       {view === "evals" && <EvalsView />}
+      {view === "fixer" && <FixerAgentView />}
       {view === "settings" && <SettingsView connection={connection} onApiChanged={() => setApiRevision((current) => current + 1)} />}
     </Shell>
   );

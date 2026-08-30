@@ -51,6 +51,7 @@ class PublicRateLimitMiddleware(BaseHTTPMiddleware):
             "/api/v1/search": max(1, search_limit),
             "/api/v1/agent/runs": max(1, agent_limit),
             "/api/v1/agent/runs/stream": max(1, agent_limit),
+            "/api/v1/fixer/runs": max(1, agent_limit),
         }
         self._profile_match_limit = max(1, agent_limit)
         self._requests: dict[tuple[str, str], deque[datetime]] = defaultdict(deque)

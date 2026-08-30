@@ -807,3 +807,26 @@ main { min-width: 0; }
   .breadcrumb span, .breadcrumb i { display: none; }
   .page { padding-bottom: 110px; }
 }
+
+/* Fixer agent view */
+.fixer-form { padding: 20px; display: flex; flex-direction: column; gap: 10px; }
+.fixer-form-row { display: grid; grid-template-columns: 1.2fr 2fr 0.5fr auto; gap: 12px; align-items: end; }
+.fixer-field { display: flex; flex-direction: column; gap: 6px; }
+.fixer-field span { font-size: 11px; font-weight: 600; color: var(--text-500); }
+.fixer-field--wide { min-width: 0; }
+.fixer-input { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; background: var(--card); font-size: 14px; color: var(--text-800); outline: none; transition: border-color 0.15s ease; width: 100%; }
+.fixer-input:focus { border-color: var(--brand-400); }
+.fixer-hint { margin: 0; font-size: 11px; color: var(--text-400); }
+.fixer-status { display: flex; align-items: center; gap: 10px; }
+.fixer-steps { display: flex; flex-direction: column; gap: 8px; padding: 14px 20px; max-height: 460px; overflow: auto; }
+.fixer-step { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--background-50); }
+.fixer-step-head { display: flex; align-items: center; gap: 10px; font-size: 12px; }
+.fixer-step-head b { font-weight: 700; }
+.fixer-step-head small { color: var(--text-400); font: 10px var(--font-mono); }
+.fixer-step-head code { color: var(--text-600); font: 11px var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fixer-step pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: 11px/1.6 var(--font-mono); color: var(--text-600); background: var(--background-100); border-radius: 8px; padding: 8px 10px; max-height: 160px; overflow: auto; }
+.fixer-diff { margin: 0; padding: 14px 20px; white-space: pre-wrap; word-break: break-word; font: 11px/1.7 var(--font-mono); color: var(--text-700); background: var(--background-100); max-height: 480px; overflow: auto; }
+
+@media (max-width: 900px) {
+  .fixer-form-row { grid-template-columns: 1fr; }
+}

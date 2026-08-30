@@ -23,6 +23,7 @@ export const sampleQueries = [
 export const navItems: { id: View; label: string }[] = [
   { id: "discover", label: "搜索" },
   { id: "saved", label: "收藏" },
+  { id: "fixer", label: "修复 Agent" },
 ];
 
 export function formatNumber(value: number) {
