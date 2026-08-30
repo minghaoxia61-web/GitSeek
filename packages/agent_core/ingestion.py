@@ -49,7 +49,10 @@ def clone_repository(
         raise IngestionError(f"workspace is not empty: {dest}")
     try:
         subprocess.run(
-            ["git", "clone", "--depth", str(depth), clone_url, str(dest)],
+            [
+                "git", "-c", "core.autocrlf=false", "clone",
+                "--depth", str(depth), clone_url, str(dest),
+            ],
             check=True,
             capture_output=True,
             timeout=timeout_s,

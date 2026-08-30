@@ -1,4 +1,4 @@
-from packages.agent_core.issue_parser import parse_issue
+from packages.agent_core.issue_parser import enrich_issue, parse_issue
 
 
 def test_extracts_traceback_paths_and_identifiers():
@@ -34,3 +34,26 @@ def test_search_terms_deduplicate_and_cap():
 def test_empty_body_still_parses_title():
     analysis = parse_issue("Locator crashes on empty index", None)
     assert "locator" in analysis.keywords
+
+
+def test_enrich_prompt_keeps_json_sample_intact():
+    """The JSON shape must survive str.format — regression for the KeyError('"expected"') bug."""
+    import asyncio
+
+    class CapturingClient:
+        def __init__(self):
+            self.prompt = ""
+
+        async def complete(self, messages, *, temperature=0.0, max_tokens=512):
+            self.prompt = messages[0]["content"]
+
+            class Result:
+                content = '{"expected": "ok", "actual": "bad", "module_keywords": ["login"]}'
+            return Result()
+
+    client = CapturingClient()
+    analysis = parse_issue("Login broken", "body text")
+    merged = asyncio.run(enrich_issue(analysis, client, body="body"))
+    assert '{"expected"' in client.prompt
+    assert merged.expected == "ok"
+    assert "login" in merged.module_keywords

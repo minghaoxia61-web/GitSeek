@@ -12,7 +12,7 @@ from pathlib import Path
 
 from packages.sandbox.base import BaseSandbox, ExecResult
 
-DEFAULT_IMAGE = "python:3.12-slim"
+DEFAULT_IMAGE = "python:3.12"  # full build: the fixer loop needs git apply/git diff in-container
 
 
 def docker_command(

@@ -26,9 +26,9 @@ STOPWORDS = {
 
 ENRICH_PROMPT = """You analyse a GitHub issue for a code-repair agent.
 Return ONLY JSON with this shape:
-{"expected": "one sentence describing correct behaviour",
+{{"expected": "one sentence describing correct behaviour",
  "actual": "one sentence describing the reported broken behaviour",
- "module_keywords": ["up to 6 code-level keywords such as module or function names"]}
+ "module_keywords": ["up to 6 code-level keywords such as module or function names"]}}
 Issue title: {title}
 Issue body:
 {body}"""
@@ -130,8 +130,8 @@ async def enrich_issue(
     """Merge LLM understanding into the regex analysis; returns the input unchanged on failure."""
     if client is None:
         return analysis
-    prompt = ENRICH_PROMPT.format(title=analysis.title, body=(body or "")[:4000])
     try:
+        prompt = ENRICH_PROMPT.format(title=analysis.title, body=(body or "")[:4000])
         result = await client.complete(  # type: ignore[attr-defined]
             [{"role": "user", "content": prompt}],
             temperature=0.0,

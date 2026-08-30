@@ -7,8 +7,8 @@ peek at files, and a ``FINISH:`` line ends the loop. Everything else is treated 
 import re
 from dataclasses import dataclass
 
-BASH_BLOCK_RE = re.compile(r"```(?:bash|sh|shell)[ \t]*\r?\n(.*?)```", re.DOTALL)
-PATCH_BLOCK_RE = re.compile(r"```(?:diff|patch)[ \t]*\r?\n(.*?)```", re.DOTALL)
+BASH_BLOCK_RE = re.compile(r"```[ \t]*(?:bash|sh|shell)[ \t]*\r?\n(.*?)```", re.DOTALL)
+PATCH_BLOCK_RE = re.compile(r"```[ \t]*(?:diff|patch)[ \t]*\r?\n(.*?)```", re.DOTALL)
 VIEW_LINE_RE = re.compile(r"^[ \t]*VIEW\s+([^\s]+)(?:[ \t]+(\d+)[ \t]+(\d+))?[ \t]*$", re.MULTILINE)
 FINISH_RE = re.compile(r"^[ \t]*FINISH[:：][ \t]*(.*)$", re.MULTILINE)
 
