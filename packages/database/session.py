@@ -10,6 +10,11 @@ from packages.domain.settings import get_settings
 
 def create_db_engine(database_url: str | None = None, *, echo: bool = False) -> Engine:
     url = database_url or get_settings().database_url
+    if not url or not url.startswith(("postgres", "sqlite")):
+        raise RuntimeError(
+            "DATABASE_URL is empty or unsupported. In GitHub Actions, set the "
+            "DATABASE_URL repository secret to the full Neon connection string."
+        )
     connect_args = {"connect_timeout": 3} if url.startswith("postgresql") else {}
     return create_engine(url, echo=echo, pool_pre_ping=True, connect_args=connect_args)
 

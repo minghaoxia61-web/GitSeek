@@ -1,5 +1,6 @@
-"""Queue runner for the issue-to-PR fixer agent."""
+"""Queue runner package for the issue-to-PR fixer agent.
 
-from workers.agent_runner.runner import claim_next_run, process_run
-
-__all__ = ["claim_next_run", "process_run"]
+Import the runner explicitly: ``from workers.agent_runner.runner import ...``.
+Keeping this ``__init__`` empty avoids a duplicate-module warning when the runner
+is executed via ``python -m workers.agent_runner.runner``.
+"""
