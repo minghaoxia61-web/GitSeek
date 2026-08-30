@@ -1,8 +1,11 @@
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 
 from apps.api.observability import PublicRateLimitMiddleware, RequestObservabilityMiddleware
 from apps.api.routes.agents import router as agents_router
@@ -15,6 +18,17 @@ from apps.api.routes.repositories import router as repositories_router
 from apps.api.routes.saved import router as saved_router
 from apps.api.routes.search import router as search_router
 from packages.domain.settings import get_settings
+
+logger = logging.getLogger("gitseek.app")
+
+
+async def database_unavailable_handler(_: Request, exc: Exception) -> JSONResponse:
+    """Return a CORS-visible 503 instead of a bare 500 (which browsers report as network errors)."""
+    logger.error("database unavailable: %s", type(exc).__name__)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "数据库暂时不可用，请稍后再试；若持续出现请检查数据库连接配置。"},
+    )
 
 
 @asynccontextmanager
@@ -49,6 +63,7 @@ def create_app() -> FastAPI:
     application.include_router(jobs_router)
     application.include_router(agents_router)
     application.include_router(fixer_router)
+    application.add_exception_handler(SQLAlchemyError, database_unavailable_handler)
     application.include_router(search_router)
     application.include_router(saved_router)
     application.include_router(repositories_router)

@@ -115,6 +115,26 @@ def test_get_missing_run_returns_404():
     assert client.get("/api/v1/fixer/runs/nope/diff").status_code == 404
 
 
+def test_database_outage_returns_visible_503():
+    """DB outage must surface as a clear 503, not a bare 500 browsers read as a network error."""
+    from sqlalchemy.exc import OperationalError
+
+    from apps.api.dependencies import get_db_session
+
+    def broken_session():
+        raise OperationalError("CONNECT", {}, Exception("password authentication failed"))
+        yield  # pragma: no cover
+
+    app.dependency_overrides[get_db_session] = broken_session
+    try:
+        client = TestClient(app)
+        response = client.get("/api/v1/fixer/runs/some-run")
+        assert response.status_code == 503
+        assert "数据库" in response.json()["detail"]
+    finally:
+        app.dependency_overrides.pop(get_db_session, None)
+
+
 def test_stream_emits_steps_then_result(runner_factory):
     run_id = seed_terminal_run(runner_factory)
     client = TestClient(app)
