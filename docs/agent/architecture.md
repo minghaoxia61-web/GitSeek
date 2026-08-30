@@ -52,6 +52,8 @@ python -c "..."  # 或在 worker 内调用 ingest_repository;WebUI 后续提供�
 curl -X POST /api/v1/fixer/runs -d '{"repo_full_name":"owner/repo","issue_url":"https://github.com/owner/repo/issues/1"}'
 # 3. 消费队列(本机调试用 local;评测用 docker)
 python -m workers.agent_runner.runner --backend docker
+#    无服务器方案:.github/workflows/agent-runner.yml 每 10 分钟在 GitHub Actions
+#    上用 docker 沙箱消费一次(仓库 Secrets 需配置 DATABASE_URL / OPENAI_API_KEY)
 # 4. 观察时间线:GET /api/v1/fixer/runs/{id}/stream(SSE)
 # 5. 跑评测
 python -m packages.agent_core.bench --manifest data/bench-manifest.json --backend docker

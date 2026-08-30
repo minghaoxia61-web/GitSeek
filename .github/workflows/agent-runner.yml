@@ -1,0 +1,35 @@
+name: Agent runner
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: agent-runner
+  cancel-in-progress: false
+
+jobs:
+  drain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e .
+      - name: Process one queued fixer run
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENSCOUT_SANDBOX_BACKEND: docker
+          # DeepSeek list prices; adjust to your plan so /fixer shows real cost.
+          OPENSCOUT_FIXER_INPUT_COST_PER_MILLION: "0.27"
+          OPENSCOUT_FIXER_OUTPUT_COST_PER_MILLION: "1.10"
+        run: python -m workers.agent_runner.runner --once --backend docker
