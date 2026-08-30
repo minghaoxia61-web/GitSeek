@@ -256,7 +256,8 @@ class FixerAgent:
 
             if not actions:
                 # Keep the raw reply as evidence so runs stay debuggable.
-                await self._record(round_no, "no_action", {"reply": truncate(completion.content, 800)}, completion.content)
+                reply = truncate(completion.content, 800)
+                await self._record(round_no, "no_action", {"reply": reply}, completion.content)
                 messages.append({
                     "role": "user",
                     "content": (
