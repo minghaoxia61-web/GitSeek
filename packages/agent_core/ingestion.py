@@ -1,6 +1,7 @@
 """Repository cloning, workspace paths, and code-chunk ingestion for the fixer agent."""
 
 import hashlib
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -118,3 +119,41 @@ async def ingest_repository(
         chunk_count=len(chunks),
         embedded_count=len(vectors),
     )
+
+
+async def _ingest_cli(
+    repo: str,
+    clone_url: str | None,
+    workspace_root_arg: str | None,
+) -> IngestionStats:
+    from packages.database.session import create_db_engine, create_session_factory
+
+    slug = repo.replace("/", "__")
+    workspace = workspace_root(workspace_root_arg) / slug
+    shutil.rmtree(workspace, ignore_errors=True)
+    clone_repository(clone_url or f"https://github.com/{repo}.git", workspace)
+    factory = create_session_factory(create_db_engine())
+    with factory() as session:
+        return await ingest_repository(session, repo, workspace)
+
+
+def main() -> None:
+    """CLI: clone (fresh) and index one repository, e.g. for the GitHub Actions runner."""
+    import argparse
+    import asyncio
+
+    parser = argparse.ArgumentParser(description="Index a repository for the fixer agent")
+    parser.add_argument("--repo", required=True, help="owner/repo")
+    parser.add_argument("--clone-url", default=None, help="override the https clone URL")
+    parser.add_argument("--workspace-root", default=None)
+    args = parser.parse_args()
+    stats = asyncio.run(_ingest_cli(args.repo, args.clone_url, args.workspace_root))
+    message = (
+        f"indexed {stats.repo_full_name}: {stats.chunk_count} chunks, "
+        f"{stats.embedded_count} embedded"
+    )
+    print(message)
+
+
+if __name__ == "__main__":
+    main()
