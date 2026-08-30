@@ -154,6 +154,15 @@ export async function getFixerRun(runId: string): Promise<FixerRun> {
   return apiFetch<FixerRun>(`/api/v1/fixer/runs/${encodeURIComponent(runId)}`);
 }
 
+export async function getFixerTimeline(
+  runId: string,
+  afterSeq = 0,
+): Promise<{ run: FixerRun; steps: FixerStep[] }> {
+  return apiFetch<{ run: FixerRun; steps: FixerStep[] }>(
+    `/api/v1/fixer/runs/${encodeURIComponent(runId)}/timeline?after_seq=${afterSeq}`,
+  );
+}
+
 export async function streamFixerRun(
   runId: string,
   onStep: (step: FixerStep) => void,

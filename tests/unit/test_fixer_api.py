@@ -161,3 +161,16 @@ def test_stream_reports_missing_run(runner_factory):
             if line.startswith("event: "):
                 events.append(line)
     assert events[-1] == "event: error"
+
+
+def test_timeline_returns_steps_then_obeys_after_seq(runner_factory):
+    run_id = seed_terminal_run(runner_factory)
+    client = TestClient(app)
+    first = client.get(f"/api/v1/fixer/runs/{run_id}/timeline").json()
+    assert first["run"]["status"] == "succeeded"
+    assert len(first["steps"]) == 1
+    assert first["steps"][0]["tool"] == "run_bash"
+    assert "b/x.py" in first["run"]["diff"]
+    second = client.get(f"/api/v1/fixer/runs/{run_id}/timeline", params={"after_seq": 1}).json()
+    assert second["steps"] == []
+    assert client.get("/api/v1/fixer/runs/ghost/timeline").status_code == 404

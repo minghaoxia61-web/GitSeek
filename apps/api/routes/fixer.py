@@ -141,6 +141,20 @@ def _get_factory():  # noqa: ANN201 - indirection so tests can inject an in-memo
     return get_session_factory()
 
 
+def _steps_payload(steps: list[FixerStepRecord]) -> list[dict]:
+    return [
+        {
+            "seq": step.seq,
+            "round": step.round,
+            "tool": step.tool,
+            "input": step.input_json,
+            "output": step.output,
+            "latency_ms": step.latency_ms,
+        }
+        for step in steps
+    ]
+
+
 def _snapshot(run_id: str, last_seq: int) -> dict | None:
     with _get_factory()() as session:
         run = session.get(FixerRunRecord, run_id)
@@ -154,18 +168,34 @@ def _snapshot(run_id: str, last_seq: int) -> dict | None:
         ).scalars().all()
         return {
             "run": _run_payload(session, run, include_diff=run.status in {"succeeded", "failed"}),
-            "steps": [
-                {
-                    "seq": step.seq,
-                    "round": step.round,
-                    "tool": step.tool,
-                    "input": step.input_json,
-                    "output": step.output,
-                    "latency_ms": step.latency_ms,
-                }
-                for step in steps
-            ],
+            "steps": _steps_payload(steps),
         }
+
+
+@router.get("/runs/{run_id}/timeline")
+def get_run_timeline(
+    run_id: str,
+    after_seq: int = 0,
+    session: Annotated[Session, Depends(get_db_session)] = None,
+) -> dict:
+    """Poll-friendly snapshot: the run plus any steps newer than ``after_seq``.
+
+    Browsers poll this instead of holding an SSE connection, which Vercel's
+    serverless gateway truncates before a queued run finishes.
+    """
+    run = session.get(FixerRunRecord, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="fixer run not found")
+    steps = session.execute(
+        select(FixerStepRecord)
+        .where(FixerStepRecord.run_id == run_id)
+        .where(FixerStepRecord.seq > after_seq)
+        .order_by(FixerStepRecord.seq)
+    ).scalars().all()
+    return {
+        "run": _run_payload(session, run, include_diff=run.status in {"succeeded", "failed"}),
+        "steps": _steps_payload(steps),
+    }
 
 
 @router.get("/runs/{run_id}/stream")

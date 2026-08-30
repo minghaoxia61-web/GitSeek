@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { ApiError, createFixerRun, streamFixerRun } from "../api";
+import { ApiError, createFixerRun, getFixerTimeline } from "../api";
 import type { FixerRun, FixerStep } from "../types";
 import { Signal } from "../components/ui";
 
@@ -41,6 +41,41 @@ export function FixerAgentView() {
   const [run, setRun] = useState<FixerRun | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
+  const pollTimer = useRef<number | null>(null);
+
+  useEffect(() => () => {
+    if (pollTimer.current !== null) window.clearInterval(pollTimer.current);
+    controller.current?.abort();
+  }, []);
+
+  async function watchRun(runId: string, signal: AbortSignal) {
+    let afterSeq = 0;
+    const tick = async () => {
+      if (signal.aborted) return;
+      try {
+        const snapshot = await getFixerTimeline(runId, afterSeq);
+        setRun(snapshot.run);
+        if (snapshot.steps.length) {
+          setSteps((current) => {
+            const known = new Set(current.map((step) => step.seq));
+            return [...current, ...snapshot.steps.filter((step) => !known.has(step.seq))];
+          });
+          afterSeq = Math.max(afterSeq, ...snapshot.steps.map((step) => step.seq));
+        }
+        if (snapshot.run.status === "succeeded" || snapshot.run.status === "failed") {
+          if (pollTimer.current !== null) window.clearInterval(pollTimer.current);
+          setRunning(false);
+        }
+      } catch (error) {
+        if (pollTimer.current !== null) window.clearInterval(pollTimer.current);
+        setRunning(false);
+        setProblem(error instanceof ApiError ? error.message : "读取任务状态失败，请稍后刷新查看。");
+      }
+    };
+    await tick();
+    if (signal.aborted) return;
+    pollTimer.current = window.setInterval(() => void tick(), 5000);
+  }
 
   async function submit() {
     if (running) return;
@@ -63,12 +98,7 @@ export function FixerAgentView() {
         max_rounds: Number(maxRounds) > 0 ? Number(maxRounds) : null,
       });
       setRun(created);
-      const finalRun = await streamFixerRun(
-        created.run_id,
-        (step) => setSteps((current) => [...current, step]),
-        abort.signal,
-      );
-      setRun(finalRun);
+      await watchRun(created.run_id, abort.signal);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") {
         setProblem("已停止跟踪该次修复运行。");
@@ -109,7 +139,7 @@ export function FixerAgentView() {
 
       {run && (
         <section className="metric-grid">
-          <article className="metric-card"><small>状态</small><strong className="fixer-status"><Signal tone={statusTone} /> {statusLabel}</strong><span className={run.status === "succeeded" ? "passed" : run.status === "failed" ? "failed" : ""}>{run.model ?? "默认模型"}</span><p>{run.summary ?? failureLabels[run.failure_category ?? ""] ?? run.error ?? "等待 worker 认领"}</p></article>
+          <article className="metric-card"><small>状态</small><strong className="fixer-status"><Signal tone={statusTone} /> {statusLabel}</strong><span className={run.status === "succeeded" ? "passed" : run.status === "failed" ? "failed" : ""}>{run.model ?? "默认模型"}</span><p>{run.status === "queued" ? "已排队，等待 worker 认领（可在 GitHub Actions 手动触发 Agent runner 立即处理）" : run.summary ?? failureLabels[run.failure_category ?? ""] ?? run.error ?? "等待 worker 认领"}</p></article>
           <article className="metric-card"><small>轮数 / 上限</small><strong>{run.rounds}/{run.max_rounds}</strong><span>token 预算 {run.token_budget.toLocaleString()}</span><p>输入 {run.token_in} · 输出 {run.token_out}</p></article>
           <article className="metric-card"><small>工具调用</small><strong>{run.step_count ?? steps.length}</strong><span>成本 ${run.cost_usd.toFixed(4)}</span><p>issue #{run.issue_number ?? "-"}</p></article>
         </section>
