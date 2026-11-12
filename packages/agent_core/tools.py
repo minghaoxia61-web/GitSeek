@@ -30,7 +30,14 @@ def parse_actions(text: str) -> tuple[list[AgentAction], bool]:
 
     def collect(regex: re.Pattern[str], kind: str) -> None:
         for match in regex.finditer(text):
-            action = AgentAction(kind=kind, payload=match.group(1).strip(), order=match.start())
+            payload = match.group(1)
+            if kind == "patch":
+                # Unified diffs need their context whitespace and final newline.
+                if not payload.endswith("\n"):
+                    payload += "\n"
+            else:
+                payload = payload.strip()
+            action = AgentAction(kind=kind, payload=payload, order=match.start())
             found.append(action)
 
     collect(BASH_BLOCK_RE, "bash")

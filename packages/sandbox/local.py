@@ -5,10 +5,12 @@ directory. Production/evaluation workloads must use :class:`packages.sandbox.Doc
 """
 
 import asyncio
+import hashlib
 import os
 import shutil
 import subprocess
 import time
+from pathlib import Path
 
 from packages.sandbox.base import BaseSandbox, ExecResult
 
@@ -25,10 +27,23 @@ def _sandbox_env() -> dict[str, str]:
     return env
 
 
+def local_shell_executable() -> str:
+    if os.name == "nt":
+        # System32/bash.exe launches WSL: its Python/paths are not the host runtime.
+        git = shutil.which("git")
+        if git:
+            root = Path(git).resolve().parent.parent
+            for candidate in (root / "bin/bash.exe", root / "usr/bin/bash.exe"):
+                if candidate.is_file():
+                    return str(candidate)
+        return shutil.which("cmd") or "cmd"
+    return shutil.which("bash") or "/bin/sh"
+
+
 def _shell_argv(command: str) -> list[str]:
-    if shutil.which("bash") is not None:
-        return ["bash", "-c", command]
-    return ["cmd", "/c", command]
+    shell = local_shell_executable()
+    switch = "/c" if Path(shell).name.casefold() in {"cmd", "cmd.exe"} else "-c"
+    return [shell, switch, command]
 
 
 class LocalSandbox(BaseSandbox):
@@ -46,18 +61,21 @@ class LocalSandbox(BaseSandbox):
                 subprocess.run,
                 argv,
                 cwd=str(self.workspace),
-                input=stdin,
+                input=stdin.encode("utf-8") if stdin is not None else None,
                 capture_output=True,
-                text=True,
                 timeout=timeout_s,
                 env=_sandbox_env(),
             )
-        except subprocess.TimeoutExpired:
-            return self._timeout_result(command, int((time.monotonic() - started) * 1000))
+        except subprocess.TimeoutExpired as exc:
+            return self._timeout_result(
+                command, int((time.monotonic() - started) * 1000), exc.output, exc.stderr
+            )
         return ExecResult(
             command=command,
             exit_code=completed.returncode,
-            stdout=completed.stdout or "",
-            stderr=completed.stderr or "",
+            stdout=(completed.stdout or b"").decode("utf-8", errors="replace"),
+            stderr=(completed.stderr or b"").decode("utf-8", errors="replace"),
             duration_ms=int((time.monotonic() - started) * 1000),
+            stdout_sha256=hashlib.sha256(completed.stdout or b"").hexdigest(),
+            stderr_sha256=hashlib.sha256(completed.stderr or b"").hexdigest(),
         )

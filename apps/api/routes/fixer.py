@@ -73,11 +73,19 @@ def _run_payload(session: Session, run: FixerRunRecord, *, include_diff: bool = 
         "rounds": run.rounds,
         "token_in": run.token_in,
         "token_out": run.token_out,
-        "cost_usd": run.cost_usd,
+        # Historical numeric defaults are not evidence that a provider call was free.
+        "cost_usd": ((run.result_json or {}).get("billing", {}).get("estimated_cost_usd")
+                     if ((run.result_json or {}).get("billing") or {}).get("version")
+                     == "provider-billing-v1" else None),
+        "billing": (run.result_json or {}).get("billing"),
+        "evidence": (run.result_json or {}).get("evidence"),
         "success": run.success,
         "failure_category": run.failure_category,
         "summary": run.summary,
         "error": run.error,
+        "verification": (run.result_json or {}).get("verification"),
+        "execution": (run.result_json or {}).get("execution"),
+        "acceptance": (run.result_json or {}).get("acceptance"),
         "step_count": step_count,
         "created_at": run.created_at.isoformat() if run.created_at else None,
         "completed_at": run.completed_at.isoformat() if run.completed_at else None,

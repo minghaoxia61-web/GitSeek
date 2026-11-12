@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import AliasChoices, Field, SecretStr, field_validator
+from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,10 +45,23 @@ class Settings(BaseSettings):
     fixer_model: str | None = None
     fixer_max_rounds: int = 5
     fixer_token_budget: int = 200_000
-    fixer_input_cost_per_million: float = 0.0
-    fixer_output_cost_per_million: float = 0.0
+    fixer_input_cost_per_million: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    fixer_output_cost_per_million: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    fixer_embedding_cost_per_million: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    fixer_zero_price_confirmed: bool = False
     sandbox_backend: str = "local"
     agent_workspace_root: str | None = None
+    agent_evidence_root: str | None = None
+
+    @model_validator(mode="after")
+    def old_zero_prices_are_unknown(self) -> "Settings":
+        # Older .env examples used 0 as an unset placeholder. Do not reinterpret it as free.
+        if not self.fixer_zero_price_confirmed:
+            for name in ("fixer_input_cost_per_million", "fixer_output_cost_per_million",
+                         "fixer_embedding_cost_per_million"):
+                if getattr(self, name) == 0:
+                    setattr(self, name, None)
+        return self
 
     @field_validator("database_url", mode="before")
     @classmethod

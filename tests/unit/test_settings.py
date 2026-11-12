@@ -29,3 +29,19 @@ def test_schema_bootstrap_creates_missing_tables() -> None:
     assert ensure_database_schema(engine) is True
     assert "repositories" in inspect(engine).get_table_names()
     assert "search_sessions" in inspect(engine).get_table_names()
+
+
+def test_legacy_zero_price_placeholders_are_unknown_unless_confirmed():
+    values = {
+        "fixer_input_cost_per_million": 0,
+        "fixer_output_cost_per_million": 0,
+        "fixer_embedding_cost_per_million": 0,
+    }
+    unknown = Settings(_env_file=None, fixer_zero_price_confirmed=False, **values)
+    assert unknown.fixer_input_cost_per_million is None
+    assert unknown.fixer_output_cost_per_million is None
+    assert unknown.fixer_embedding_cost_per_million is None
+    confirmed = Settings(_env_file=None, fixer_zero_price_confirmed=True, **values)
+    assert confirmed.fixer_input_cost_per_million == 0
+    assert confirmed.fixer_output_cost_per_million == 0
+    assert confirmed.fixer_embedding_cost_per_million == 0

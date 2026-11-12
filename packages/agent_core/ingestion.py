@@ -11,6 +11,7 @@ from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from packages.agent_core.chunking import chunk_repository
+from packages.agent_core.execution import COMMIT_RE, ExecutionIdentityError
 from packages.domain.models.fixer import AgentCodeChunkRecord
 
 
@@ -44,20 +45,34 @@ def clone_repository(
     *,
     depth: int = 1,
     timeout_s: float = 600.0,
+    base_commit: str | None = None,
 ) -> Path:
     """Clone a repository into ``dest`` via the git CLI (shallow by default)."""
+    if base_commit is not None and not COMMIT_RE.fullmatch(base_commit):
+        raise IngestionError("base_commit must be a full commit hash")
     if dest.exists() and any(dest.iterdir()):
         raise IngestionError(f"workspace is not empty: {dest}")
     try:
         subprocess.run(
             [
                 "git", "-c", "core.autocrlf=false", "clone",
-                "--depth", str(depth), clone_url, str(dest),
+                "--no-checkout", "--depth", str(depth), "--", clone_url, str(dest),
             ],
             check=True,
             capture_output=True,
             timeout=timeout_s,
         )
+        if base_commit is not None:
+            subprocess.run(
+                ["git", "-C", str(dest), "fetch", "--depth", str(depth), "origin", base_commit],
+                check=True, capture_output=True, timeout=timeout_s,
+            )
+        subprocess.run(
+            ["git", "-C", str(dest), "-c", "core.autocrlf=false", "checkout", "--detach",
+             base_commit or "HEAD", "--"],
+            check=True, capture_output=True, timeout=timeout_s,
+        )
+        verify_checkout(dest, base_commit)
     except FileNotFoundError as exc:
         raise IngestionError("git CLI is not available on PATH") from exc
     except subprocess.TimeoutExpired as exc:
@@ -66,6 +81,26 @@ def clone_repository(
         detail = (exc.stderr or b"").decode("utf-8", "ignore")[-300:]
         raise IngestionError(f"git clone failed: {detail}") from exc
     return dest
+
+
+def verify_checkout(workspace: Path, expected_commit: str | None = None,
+                    *, require_clean: bool = True) -> str:
+    """Check actual HEAD and tracked bytes; never resolve a requested version to a branch."""
+    actual = subprocess.run(
+        ["git", "-C", str(workspace), "rev-parse", "--verify", "HEAD^{commit}"],
+        check=True, capture_output=True, text=True, encoding="utf-8", timeout=30,
+    ).stdout.strip()
+    if not COMMIT_RE.fullmatch(actual) or (expected_commit and actual != expected_commit):
+        raise ExecutionIdentityError("checked-out HEAD does not match requested base_commit")
+    if not require_clean:
+        return actual
+    dirty = subprocess.run(
+        ["git", "-C", str(workspace), "status", "--porcelain", "--untracked-files=all"],
+        check=True, capture_output=True, text=True, encoding="utf-8", timeout=30,
+    ).stdout
+    if dirty.strip():
+        raise ExecutionIdentityError("initial checkout must be clean")
+    return actual
 
 
 def _chunk_text_for_embedding(path: str, name: str, summary: str | None, content: str) -> str:

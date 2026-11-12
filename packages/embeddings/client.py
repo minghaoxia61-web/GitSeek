@@ -1,3 +1,4 @@
+import hashlib
 from time import perf_counter
 from types import TracebackType
 
@@ -5,6 +6,7 @@ import httpx
 from pydantic import BaseModel, Field, SecretStr
 
 from packages.observability import runtime_metrics
+from packages.observability.calls import token_count
 
 
 class EmbeddingAPIError(RuntimeError):
@@ -19,7 +21,7 @@ class EmbeddingItem(BaseModel):
 class EmbeddingResponse(BaseModel):
     data: list[EmbeddingItem]
     model: str | None = None
-    usage: dict[str, int] = Field(default_factory=dict)
+    usage: dict[str, object] = Field(default_factory=dict)
 
 
 class OpenAIEmbeddingClient:
@@ -31,12 +33,13 @@ class OpenAIEmbeddingClient:
         base_url: str = "https://api.openai.com/v1",
         timeout: float = 20.0,
         transport: httpx.AsyncBaseTransport | None = None,
-        cost_per_million: float = 0.0,
+        cost_per_million: float | None = None,
     ) -> None:
         token = api_key.get_secret_value() if isinstance(api_key, SecretStr) else api_key
         self.model = model
         self.base_url = base_url.rstrip("/")
-        self._cost_per_million = max(0.0, cost_per_million)
+        self._cost_per_million = None if cost_per_million is None else max(0.0, cost_per_million)
+        self.last_receipt = None
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             headers={"Authorization": f"Bearer {token}"},
@@ -63,16 +66,28 @@ class OpenAIEmbeddingClient:
             return []
         request_started = perf_counter()
         input_tokens = 0
+        self.last_receipt = {"input_tokens": None, "output_tokens": 0, "usage_known": False}
         try:
             response = await self._client.post(
                 "/embeddings",
                 json={"model": self.model, "input": inputs, "encoding_format": "float"},
             )
+            self.last_receipt["http_status"] = response.status_code
+            self.last_receipt["http_response_sha256"] = hashlib.sha256(response.content).hexdigest()
             response.raise_for_status()
             payload = EmbeddingResponse.model_validate(response.json())
-            input_tokens = int(
-                payload.usage.get("prompt_tokens", payload.usage.get("total_tokens", 0))
+            observed = token_count(
+                payload.usage.get("prompt_tokens", payload.usage.get("total_tokens"))
             )
+            self.last_receipt.update(
+                {
+                    "input_tokens": observed,
+                    "output_tokens": 0,
+                    "usage_known": observed is not None,
+                    "provider_model": payload.model,
+                }
+            )
+            input_tokens = observed or 0
         except (httpx.HTTPError, ValueError) as error:
             runtime_metrics.record_external(
                 f"embedding:{self.model}",
@@ -103,6 +118,10 @@ class OpenAIEmbeddingClient:
             duration_ms=(perf_counter() - request_started) * 1000,
             error=False,
             input_tokens=input_tokens,
-            estimated_cost_usd=input_tokens * self._cost_per_million / 1_000_000,
+            estimated_cost_usd=(
+                None
+                if observed is None or self._cost_per_million is None
+                else input_tokens * self._cost_per_million / 1_000_000
+            ),
         )
         return [item.embedding for item in ordered]

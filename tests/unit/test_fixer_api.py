@@ -104,6 +104,8 @@ def test_get_run_and_diff(runner_factory):
     client = TestClient(app)
     payload = client.get(f"/api/v1/fixer/runs/{run_id}").json()
     assert payload["status"] == "succeeded"
+    assert payload["verification"] is None  # Historical success has no verification evidence.
+    assert payload["cost_usd"] is None  # Historical numeric defaults have no pricing receipt.
     assert payload["step_count"] == 1
     diff = client.get(f"/api/v1/fixer/runs/{run_id}/diff").json()
     assert "b/x.py" in diff["diff"]
@@ -174,3 +176,61 @@ def test_timeline_returns_steps_then_obeys_after_seq(runner_factory):
     second = client.get(f"/api/v1/fixer/runs/{run_id}/timeline", params={"after_seq": 1}).json()
     assert second["steps"] == []
     assert client.get("/api/v1/fixer/runs/ghost/timeline").status_code == 404
+
+
+def test_api_exposes_stored_verification_in_run_and_timeline(runner_factory):
+    run_id = seed_terminal_run(runner_factory)
+    verification = {
+        "version": "fixer-verification-v1", "scope": "workspace_tests",
+        "model_finished": True, "patch_present": True, "apply_ok": True,
+        "test_executed": True, "test_ok": False, "test_exit_code": 7,
+        "test_timed_out": False,
+    }
+    with runner_factory() as session:
+        run = session.get(FixerRunRecord, run_id)
+        run.result_json = {"verification": verification}
+        run.status = "failed"
+        run.success = False
+        session.commit()
+    client = TestClient(app)
+    assert client.get(f"/api/v1/fixer/runs/{run_id}").json()["verification"] == verification
+    timeline = client.get(f"/api/v1/fixer/runs/{run_id}/timeline").json()
+    assert timeline["run"]["verification"] == verification
+
+
+def test_public_create_cannot_set_trusted_test_command(runner_factory):
+    client = TestClient(app)
+    response = client.post("/api/v1/fixer/runs", json={
+        "repo_full_name": "owner/repo", "issue_number": 1,
+        "test_command": "echo untrusted-command",
+    })
+    assert response.status_code == 200
+    with runner_factory() as session:
+        assert session.get(FixerRunRecord, response.json()["run_id"]).test_command is None
+
+
+def test_api_returns_independent_acceptance_evidence(runner_factory):
+    run_id = seed_terminal_run(runner_factory)
+    acceptance = {"version": "clean-acceptance-v1", "passed": False,
+                  "baseline_target": {"exit_code": 1}, "baseline_reproduced": True}
+    with runner_factory() as session:
+        run = session.get(FixerRunRecord, run_id)
+        run.result_json = {"acceptance": acceptance}
+        session.commit()
+    client = TestClient(app)
+    assert client.get(f"/api/v1/fixer/runs/{run_id}").json()["acceptance"] == acceptance
+    timeline = client.get(f"/api/v1/fixer/runs/{run_id}/timeline").json()
+    assert timeline["run"]["acceptance"] == acceptance
+
+
+def test_api_cost_comes_from_billing_receipt_not_legacy_numeric_column(runner_factory):
+    run_id = seed_terminal_run(runner_factory)
+    bill = {"version": "provider-billing-v1", "state": "unknown",
+            "estimated_cost_usd": None, "known_cost_subtotal_usd": 0.002}
+    with runner_factory() as session:
+        run = session.get(FixerRunRecord, run_id)
+        run.result_json = {"billing": bill}
+        session.commit()
+    payload = TestClient(app).get(f"/api/v1/fixer/runs/{run_id}").json()
+    assert payload["cost_usd"] is None
+    assert payload["billing"] == bill

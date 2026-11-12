@@ -5,6 +5,12 @@ complete only when it has an implemented user path and a repeatable verification
 
 ## Complete
 
+- Fixer execution gates with fixed commit/environment/dependency identities, run-scoped code
+  indexes, fail-before/pass-after checks in separate checkouts, and evaluator-owned protected tests.
+- Fixer per-attempt provider billing receipts covering enrichment, repair, and optional embeddings;
+  unknown usage/prices remain null, intermediate diffs and failure evidence survive workspace cleanup,
+  and the UI distinguishes workspace checks, clean acceptance, and unknown costs. These are
+  engineering gates; real-model Issue performance and real-container experiments remain separate.
 - Anonymous natural-language repository search.
 - Fast-first search that races deterministic and model-assisted paths, expands common bilingual
   intents locally, runs GitHub term queries in parallel, ignores stale client responses, and defers

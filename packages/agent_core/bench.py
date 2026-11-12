@@ -9,6 +9,7 @@ SWE-bench Lite Docker evaluation is intentionally out of scope for this slice â€
 
 import argparse
 import asyncio
+import hashlib
 import json
 import re
 import uuid
@@ -19,6 +20,9 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
+from packages.agent_core.acceptance import acceptance_passed
+from packages.agent_core.execution import ExecutionSpec
+from packages.agent_core.fixer import VERIFICATION_VERSION
 from packages.database.session import create_db_engine, create_session_factory
 from packages.domain.models.fixer import AgentBenchResultRecord, FixerPatchRecord, FixerRunRecord
 from packages.domain.settings import get_settings
@@ -38,22 +42,37 @@ class BenchInstance:
     repo_full_name: str
     issue_number: int
     gold_files: tuple[str, ...]
-    test_command: str | None = None
+    test_command: str
+    execution: ExecutionSpec
 
 
 def load_manifest(path: Path) -> list[BenchInstance]:
-    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    return _parse_manifest(Path(path).read_bytes())
+
+
+def _parse_manifest(raw: bytes) -> list[BenchInstance]:
+    payload = json.loads(raw)
     if not isinstance(payload, list):
         raise ValueError("manifest must be a JSON array")
     instances: list[BenchInstance] = []
     for entry in payload:
+        test_command = entry.get("test_command")
+        if not isinstance(test_command, str) or not test_command.strip():
+            raise ValueError(
+                f"instance {entry.get('instance_id', '<unknown>')} "
+                "requires a non-empty test_command"
+            )
+        execution = ExecutionSpec.model_validate(entry.get("execution"))
+        if execution.acceptance is None:
+            raise ValueError("benchmark execution requires evaluator-owned acceptance tests")
         instances.append(
             BenchInstance(
                 instance_id=str(entry["instance_id"]),
                 repo_full_name=str(entry["repo"]),
                 issue_number=int(entry["issue_number"]),
                 gold_files=tuple(entry.get("gold_files", [])),
-                test_command=entry.get("test_command"),
+                test_command=test_command,
+                execution=execution,
             )
         )
     return instances
@@ -83,10 +102,14 @@ async def run_benchmark(
     keep_workspace: bool = False,
     session_factory: sessionmaker | None = None,
 ) -> dict:
+    manifest_bytes = Path(manifest_path).read_bytes()
+    instances = _parse_manifest(manifest_bytes)
+    manifest_sha256 = hashlib.sha256(manifest_bytes).hexdigest()
+    if backend and any(item.execution.environment.backend != backend for item in instances):
+        raise ValueError("backend override does not match manifest execution environment")
     settings = get_settings()
     if session_factory is None:
         session_factory = create_session_factory(create_db_engine(settings.database_url))
-    instances = load_manifest(Path(manifest_path))
     started_at = datetime.now(UTC)
 
     per_instance: list[dict] = []
@@ -101,10 +124,14 @@ async def run_benchmark(
                     status="queued",
                     max_rounds=settings.fixer_max_rounds,
                     token_budget=settings.fixer_token_budget,
+                    test_command=instance.test_command,
+                    model=settings.fixer_model or settings.openai_model,
+                    execution_spec={"spec": instance.execution.model_dump(),
+                                    "manifest_sha256": manifest_sha256, "config_id": config_id},
                 )
             )
             session.commit()
-        claimed = claim_next_run(session_factory)
+        claimed = claim_next_run(session_factory, run_id=run_id)
         if claimed != run_id:
             raise RuntimeError("bench run was not claimed; is another worker draining the queue?")
         await process_run(
@@ -125,26 +152,60 @@ async def run_benchmark(
                 select_patch(run_id)
             ).scalar_one_or_none()
             predicted_patch_files = diff_files(patch.diff if patch else None)
+            verification = (run.result_json or {}).get("verification", {})
+            execution = (run.result_json or {}).get("execution", {})
+            acceptance = (run.result_json or {}).get("acceptance") or {}
+            billing = (run.result_json or {}).get("billing") or {}
+            verified = (
+                run.status == "succeeded" and run.success is True
+                and verification.get("version") == VERIFICATION_VERSION
+                and verification.get("scope") == "workspace_tests"
+                and run.test_command == instance.test_command
+                and execution.get("identity_verified") is True
+                and execution.get("actual_commit") == instance.execution.base_commit
+                and execution.get("final_commit") == instance.execution.base_commit
+                and execution.get("index_source_commit") == instance.execution.base_commit
+                and execution.get("requested") == run.execution_spec
+                and run.execution_spec["manifest_sha256"] == manifest_sha256
+                and verification.get("model_finished") is True
+                and verification.get("patch_present") is True
+                and verification.get("apply_ok") is True
+                and verification.get("test_executed") is True
+                and verification.get("test_ok") is True
+                and verification.get("test_exit_code") == 0
+                and verification.get("test_timed_out") is False
+                and patch is not None and bool((patch.diff or "").strip())
+                and patch.apply_ok is True and patch.test_ok is True
+                and acceptance_passed(acceptance)
+            )
             record = {
                 "instance_id": instance.instance_id,
                 "run_id": run_id,
                 "status": run.status,
-                "success": bool(run.success),
+                "success": verified,
+                "test_command": run.test_command,
+                "verification": verification,
+                "execution": execution,
+                "acceptance": acceptance,
+                "failure_category": run.failure_category,
                 "rounds": run.rounds,
-                "cost_usd": run.cost_usd,
+                "cost_usd": (billing.get("estimated_cost_usd")
+                             if billing.get("version") == "provider-billing-v1" else None),
+                "billing": billing,
                 "gold_files": list(instance.gold_files),
                 "locator_files": locator_paths,
                 "patch_files": predicted_patch_files,
                 "locator_top1": topk_hit(locator_paths, list(instance.gold_files), 1),
                 "locator_top5": topk_hit(locator_paths, list(instance.gold_files), 5),
                 "locator_top10": topk_hit(locator_paths, list(instance.gold_files), 10),
-                "patch_present": bool(predicted_patch_files),
+                "patch_present": patch is not None and bool((patch.diff or "").strip()),
                 "error": run.error,
             }
         per_instance.append(record)
         _store_metrics(session_factory, config_id, instance, record)
 
     summary = _summarise(config_id, instances, per_instance, started_at)
+    summary["manifest_sha256"] = manifest_sha256
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{config_id}-{started_at.strftime('%Y%m%d-%H%M%S')}.json"
@@ -172,10 +233,13 @@ def _store_metrics(
         ("locator_top5", 1.0 if record["locator_top5"] else 0.0, {}),
         ("locator_top10", 1.0 if record["locator_top10"] else 0.0, {}),
         (METRIC_PATCH_PRESENT, 1.0 if record["patch_present"] else 0.0, {}),
-        (METRIC_E2E_SUCCESS, 1.0 if record["success"] else 0.0, {"category": record.get("error")}),
-        (METRIC_COST_USD, record["cost_usd"], {}),
+        (METRIC_E2E_SUCCESS, 1.0 if record["success"] else 0.0,
+         {"category": record.get("failure_category"), "error": record.get("error")}),
+        ("cost_known", float(record["cost_usd"] is not None), {}),
         (METRIC_ROUNDS, float(record["rounds"]), {}),
     ]
+    if record["cost_usd"] is not None:
+        rows.append((METRIC_COST_USD, record["cost_usd"], {"basis": "configured_rates_estimate"}))
     with session_factory() as session:
         for metric, value, details in rows:
             session.add(
@@ -198,10 +262,16 @@ def _summarise(
     started_at: datetime,
 ) -> dict:
     total = len(records) or 1
+    costs = [record["cost_usd"] for record in records if record["cost_usd"] is not None]
     return {
         "config_id": config_id,
         "dataset": "github-good-first-issues",
         "instance_count": len(instances),
+        "verification_scope": "clean_checkout_tests",
+        "independent_acceptance": True,
+        "local_development_instances": sum(
+            item.execution.environment.backend == "local" for item in instances
+        ),
         "started_at": started_at.isoformat(),
         "metrics": {
             "locator_top1": round(100.0 * sum(r["locator_top1"] for r in records) / total, 1),
@@ -209,7 +279,11 @@ def _summarise(
             "locator_top10": round(100.0 * sum(r["locator_top10"] for r in records) / total, 1),
             "patch_present": round(100.0 * sum(r["patch_present"] for r in records) / total, 1),
             "e2e_success": round(100.0 * sum(r["success"] for r in records) / total, 1),
-            "avg_cost_usd": round(sum(r["cost_usd"] for r in records) / total, 4),
+            "avg_cost_usd": (round(sum(costs) / len(records), 6)
+                             if records and len(costs) == len(records) else None),
+            "cost_known_instances": len(costs),
+            "cost_unknown_instances": len(records) - len(costs),
+            "known_cost_subtotal_usd": sum(costs),
             "avg_rounds": round(sum(r["rounds"] for r in records) / total, 2),
         },
         "instances": records,

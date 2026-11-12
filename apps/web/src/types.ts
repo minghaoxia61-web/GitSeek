@@ -23,15 +23,58 @@ export type FixerRun = {
   rounds: number;
   token_in: number;
   token_out: number;
-  cost_usd: number;
+  cost_usd: number | null;
+  billing?: {
+    version: string;
+    scope: string;
+    state: string;
+    estimated_cost_usd: number | null;
+    known_cost_subtotal_usd: number;
+    call_count: number;
+    unknown_cost_calls: number;
+    unknown_usage_calls: number;
+    pending_calls: number;
+  } | null;
   success: boolean | null;
   failure_category: string | null;
   summary: string | null;
   error: string | null;
+  verification?: {
+    version: string;
+    scope: string;
+    model_finished: boolean;
+    patch_present: boolean;
+    apply_ok: boolean | null;
+    test_executed: boolean;
+    test_ok: boolean | null;
+    test_exit_code: number | null;
+    test_timed_out: boolean;
+  } | null;
+  acceptance?: {
+    version: string;
+    scope: string;
+    backend: string;
+    isolated: boolean;
+    passed: boolean;
+    baseline_reproduced: boolean;
+    patch_applied: boolean;
+    protected_files_unchanged: boolean;
+    environment_verified: boolean;
+    baseline_target?: AcceptanceCommand;
+    baseline_regression?: AcceptanceCommand;
+    final_target?: AcceptanceCommand;
+    final_regression?: AcceptanceCommand;
+  } | null;
   step_count?: number;
   diff?: string | null;
   created_at: string | null;
   completed_at: string | null;
+};
+
+type AcceptanceCommand = {
+  exit_code: number;
+  timed_out: boolean;
+  marker_found: boolean;
 };
 
 export type Recommendation = {
@@ -237,7 +280,7 @@ export type RuntimeMetricsSnapshot = {
     error_rate: number;
     input_tokens: number;
     output_tokens: number;
-    estimated_cost_usd: number;
+    estimated_cost_usd: number | null;
     average_duration_ms: number;
   }>;
   search: {

@@ -16,6 +16,9 @@ packages/agent_core/
     issue_parser.py             确定性 issue 解析(栈轨迹/文件提示/标识符),可选 LLM 增强
     chunking.py                 tree-sitter 按函数/类切块(带行号回退)
     ingestion.py                git clone(浅克隆)+ 切块入库(FTS + 可选向量)
+    execution.py                固定 commit、依赖文件和运行环境的身份规范与检查
+    acceptance.py               基线缺陷复现、干净检出应用补丁、受保护测试验收
+    evidence.py                 尝试级事件日志、原子收据、候选补丁与源码身份
     locator.py                  关键词(FTS)与向量双通道 → 复用 packages.ranking RRF 融合
     tools.py                    模型输出解析:```bash / ```diff / VIEW 行 / FINISH:
     fixer.py                    极简修复循环:≤max_rounds、token 硬预算、失败分类
@@ -27,6 +30,24 @@ packages/sandbox/               local(仅开发)与 docker(默认断网、限额
 ## 数据模型(迁移 20260830_0009)
 
 `fixer_runs`(状态机 queued→running→succeeded|failed,含 token/成本/失败分类)、`fixer_steps`(每个工具调用一条,支撑 SSE 时间线)、`fixer_patches`(每轮补丁与最终 diff)、`agent_code_chunks`(代码块索引,PostgreSQL 上带 tsvector 生成列 + GIN)、`agent_bench_results`(指标逐条落库)。 screening agent 已占用 `agent_runs`/`agent_steps`,故新表使用 `fixer_` 前缀。
+
+迁移 `20261028_0010` 增加受信任的 `fixer_runs.test_command`，由评测清单写入，公开 API 不接受。
+worker 将它传入 Agent，并在 `result_json.verification` 中分别持久化补丁与测试证据；
+`fixer_patches.apply_ok/test_ok` 来自实际检查，不再从 diff 是否存在或总体 success 推断。
+未配置独立验收时，`succeeded` 仅表示非空补丁通过当前工作区检查及配置测试，不表示干净环境独立验收完成。
+从 A6/A7 起，配置了 `execution.acceptance` 的任务还必须通过独立检出验收才能进入 `succeeded`；
+普通任务没有此规范时仍只代表工作区验证。API 使用独立的 `verification`、`acceptance` 字段表示两类证据。
+缺少测试时保留补丁，使用 `failed + test_not_configured`，页面显示待验证。
+详见[评测口径](evaluation-protocol.md)。
+
+迁移 `20261028_0011` 增加 `execution_spec`，将评测清单的 commit、环境、依赖身份与任务绑定。
+worker 显式 fetch/检出并核对 HEAD，在身份门槛通过后才构造模型客户端；固定版本任务使用本次检出的隔离索引。
+执行结束再核对 HEAD，保存开始/结束/索引版本、实际环境、清单哈希与模型配置。
+详见[执行身份与清单格式](execution-spec.md)。
+
+迁移 `20261029_0012` 允许费用为空；`provider-billing-v1` 账本覆盖增强、修复和可选 embedding 调用。
+未确认用量/价格不再算零，API/页面只使用新版账本估算。工具与供应商调用保留中间证据，
+异常时保存部分用量和补丁；本地尝试目录不随工作区清理删除。详见[运行证据和费用状态](run-evidence.md)。
 
 ## 关键决策
 

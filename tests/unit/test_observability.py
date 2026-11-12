@@ -111,3 +111,13 @@ def test_runtime_metrics_report_percentiles_errors_tokens_and_cost() -> None:
     assert snapshot["search"]["p95_duration_ms"] == 200
     assert snapshot["search"]["channels"]["github_live"]["p95_duration_ms"] == 150
     assert len(snapshot["search"]["trend"]) == 2
+
+
+def test_unknown_external_cost_preserves_known_subtotal():
+    metrics = RuntimeMetrics()
+    metrics.record_external("provider", duration_ms=1, error=False, estimated_cost_usd=0.01)
+    metrics.record_external("provider", duration_ms=1, error=True, estimated_cost_usd=None)
+    provider = metrics.snapshot()["external_services"]["provider"]
+    assert provider["estimated_cost_usd"] is None
+    assert provider["known_cost_subtotal_usd"] == 0.01
+    assert provider["unknown_cost_calls"] == 1

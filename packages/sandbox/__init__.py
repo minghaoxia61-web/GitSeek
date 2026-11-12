@@ -18,8 +18,9 @@ __all__ = [
 ]
 
 
-def create_sandbox(backend: str, workspace: Path, *, image: str = DEFAULT_IMAGE) -> BaseSandbox:
+def create_sandbox(backend: str, workspace: Path, *, image: str = DEFAULT_IMAGE,
+                   platform: str | None = None) -> BaseSandbox:
     """``docker`` runs each command in a restricted container; ``local`` is dev-only."""
     if backend == "docker":
-        return DockerSandbox(workspace, image=image)
+        return DockerSandbox(workspace, image=image, platform=platform)
     return LocalSandbox(workspace)

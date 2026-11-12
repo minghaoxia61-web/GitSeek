@@ -27,6 +27,7 @@ class ExternalStats:
     input_tokens: int = 0
     output_tokens: int = 0
     estimated_cost_usd: float = 0.0
+    unknown_cost_calls: int = 0
     total_duration_ms: float = 0.0
 
 
@@ -64,7 +65,7 @@ class RuntimeMetrics:
         error: bool,
         input_tokens: int = 0,
         output_tokens: int = 0,
-        estimated_cost_usd: float = 0.0,
+        estimated_cost_usd: float | None = None,
     ) -> None:
         with self._lock:
             stats = self._external[provider]
@@ -72,7 +73,8 @@ class RuntimeMetrics:
             stats.errors += int(error)
             stats.input_tokens += max(0, input_tokens)
             stats.output_tokens += max(0, output_tokens)
-            stats.estimated_cost_usd += max(0.0, estimated_cost_usd)
+            stats.unknown_cost_calls += int(estimated_cost_usd is None)
+            stats.estimated_cost_usd += max(0.0, estimated_cost_usd or 0.0)
             stats.total_duration_ms += max(0.0, duration_ms)
 
     def record_search(
@@ -196,7 +198,10 @@ class RuntimeMetrics:
                     "error_rate": round(stats.errors / stats.calls, 4),
                     "input_tokens": stats.input_tokens,
                     "output_tokens": stats.output_tokens,
-                    "estimated_cost_usd": round(stats.estimated_cost_usd, 6),
+                    "estimated_cost_usd": (None if stats.unknown_cost_calls
+                                           else round(stats.estimated_cost_usd, 6)),
+                    "known_cost_subtotal_usd": round(stats.estimated_cost_usd, 6),
+                    "unknown_cost_calls": stats.unknown_cost_calls,
                     "average_duration_ms": round(stats.total_duration_ms / stats.calls, 1),
                 }
                 for provider, stats in sorted(self._external.items())

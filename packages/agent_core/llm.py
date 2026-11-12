@@ -6,6 +6,7 @@ chat-completions API, and the fixer loop needs plain message round-trips instead
 schema-constrained JSON output.
 """
 
+import hashlib
 import json
 from dataclasses import dataclass
 from time import perf_counter
@@ -14,6 +15,7 @@ from types import TracebackType
 import httpx
 
 from packages.observability import runtime_metrics
+from packages.observability.calls import estimated_cost, token_count
 
 
 class AgentLLMError(RuntimeError):
@@ -39,8 +41,8 @@ def _http_error_detail(response: httpx.Response) -> str:
 @dataclass(frozen=True)
 class ChatResult:
     content: str
-    input_tokens: int
-    output_tokens: int
+    input_tokens: int | None
+    output_tokens: int | None
     model: str
 
 
@@ -53,16 +55,17 @@ class ChatCompletionClient:
         base_url: str = "https://api.openai.com/v1",
         timeout: float = 180.0,
         client: httpx.AsyncClient | None = None,
-        input_cost_per_million: float = 0.0,
-        output_cost_per_million: float = 0.0,
+        input_cost_per_million: float | None = None,
+        output_cost_per_million: float | None = None,
     ) -> None:
         self.model = model
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
         self._client = client
         self._timeout = timeout
-        self._input_cost_per_million = max(0.0, input_cost_per_million)
-        self._output_cost_per_million = max(0.0, output_cost_per_million)
+        self._input_cost_per_million = input_cost_per_million
+        self._output_cost_per_million = output_cost_per_million
+        self.last_receipt = None
 
     async def __aenter__(self) -> "ChatCompletionClient":
         return self
@@ -97,20 +100,27 @@ class ChatCompletionClient:
         client = self._client or httpx.AsyncClient(timeout=self._timeout)
         request_started = perf_counter()
         request_failed = True
-        input_tokens = 0
-        output_tokens = 0
+        input_tokens = None
+        output_tokens = None
+        self.last_receipt = {}
         try:
             response = await client.post(
                 f"{self._base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {self._api_key}"},
                 json=payload,
             )
+            self.last_receipt["http_status"] = response.status_code
+            self.last_receipt["http_response_sha256"] = hashlib.sha256(response.content).hexdigest()
             response.raise_for_status()
             response_payload = response.json()
+            if not isinstance(response_payload, dict):
+                raise AgentLLMError("model provider returned a non-object payload")
             usage = response_payload.get("usage", {})
             if isinstance(usage, dict):
-                input_tokens = int(usage.get("prompt_tokens", 0) or 0)
-                output_tokens = int(usage.get("completion_tokens", 0) or 0)
+                input_tokens = token_count(usage.get("prompt_tokens"))
+                output_tokens = token_count(usage.get("completion_tokens"))
+            self.last_receipt["response_id"] = response_payload.get("id")
+            self.last_receipt["provider_model"] = response_payload.get("model")
             choices = response_payload.get("choices")
             if not isinstance(choices, list) or not choices:
                 raise AgentLLMError("model provider returned no choices")
@@ -126,7 +136,7 @@ class ChatCompletionClient:
                 model=self.model,
             )
         except httpx.HTTPStatusError as exc:
-            detail = _http_error_detail(exc.response)
+            detail = _http_error_detail(exc.response).replace(self._api_key, "[redacted]")
             raise AgentLLMError(
                 f"model provider returned HTTP {exc.response.status_code}: {detail}"
             ) from exc
@@ -135,17 +145,26 @@ class ChatCompletionClient:
         except (TypeError, KeyError, ValueError) as exc:
             raise AgentLLMError("model provider returned an unexpected payload") from exc
         finally:
-            estimated_cost = (
-                input_tokens * self._input_cost_per_million
-                + output_tokens * self._output_cost_per_million
-            ) / 1_000_000
+            cost = estimated_cost(
+                input_tokens,
+                output_tokens,
+                self._input_cost_per_million,
+                self._output_cost_per_million,
+            )
+            self.last_receipt.update(
+                {
+                    "input_tokens": input_tokens,
+                    "output_tokens": output_tokens,
+                    "usage_known": input_tokens is not None and output_tokens is not None,
+                }
+            )
             runtime_metrics.record_external(
                 f"model:{self.model}",
                 duration_ms=(perf_counter() - request_started) * 1000,
                 error=request_failed,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                estimated_cost_usd=estimated_cost,
+                input_tokens=input_tokens or 0,
+                output_tokens=output_tokens or 0,
+                estimated_cost_usd=cost,
             )
             if owns_client:
                 await client.aclose()
