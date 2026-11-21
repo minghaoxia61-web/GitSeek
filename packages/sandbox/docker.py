@@ -6,6 +6,7 @@ host bind-mount, so host-side ``write_file``/``read_file`` stay consistent with 
 """
 
 import asyncio
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -25,7 +26,8 @@ def docker_command(
     cpus: str = "2.0",
     network_off: bool = True,
 ) -> list[str]:
-    """Pure builder so the hardened argv is unit-testable without Docker installed."""
+    """Build hardened argv without launching Docker or changing host permissions."""
+    workspace = Path(workspace).resolve()
     argv = [
         "docker", "run", "--rm", "-i",
         "--cap-drop", "ALL",
@@ -35,8 +37,11 @@ def docker_command(
     ]
     if network_off:
         argv += ["--network", "none"]
+    if os.name == "posix":
+        owner = workspace.stat()
+        argv += ["--user", f"{owner.st_uid}:{owner.st_gid}"]
     argv += [
-        "-v", f"{Path(workspace).resolve()}:{workdir}",
+        "-v", f"{workspace}:{workdir}",
         "-w", workdir,
         image,
         "bash", "-c", command,

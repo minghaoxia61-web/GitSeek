@@ -1,23 +1,23 @@
 """Parsing of model replies into scaffold actions (mini-SWE-agent style, bash-first).
 
-The tool space is deliberately tiny: bash fences execute, diff fences patch, ``VIEW`` lines
-peek at files, and a ``FINISH:`` line ends the loop. Everything else is treated as prose.
+Bash fences execute, diff fences patch, ``VIEW`` lines peek at files, and ``TEST`` lines
+select final verification. ``FINISH:`` requests verification; later text is ignored.
 """
 
 import re
 from dataclasses import dataclass
 
-BASH_BLOCK_RE = re.compile(r"```[ \t]*(?:bash|sh|shell)[ \t]*\r?\n(.*?)```", re.DOTALL)
-PATCH_BLOCK_RE = re.compile(r"```[ \t]*(?:diff|patch)[ \t]*\r?\n(.*?)```", re.DOTALL)
-VIEW_LINE_RE = re.compile(r"^[ \t]*VIEW\s+([^\s]+)(?:[ \t]+(\d+)[ \t]+(\d+))?[ \t]*$", re.MULTILINE)
-FINISH_RE = re.compile(r"^[ \t]*FINISH[:：][ \t]*(.*)$", re.MULTILINE)
+FENCE_RE = re.compile(r"^[ \t]*(`{3,}|~{3,})(.*)$")
+VIEW_LINE_RE = re.compile(r"^[ \t]*VIEW[ \t]+(\S+)(?:[ \t]+(\d+)(?:[ \t]+(\d+))?)?[ \t]*$")
+TEST_LINE_RE = re.compile(r"^[ \t]*TEST[ \t]+(\S.*)$")
+FINISH_RE = re.compile(r"^[ \t]*FINISH[:：][ \t]*(.*)$")
 
 OUTPUT_CHAR_LIMIT = 4000
 
 
 @dataclass(frozen=True)
 class AgentAction:
-    kind: str  # "bash" | "patch" | "view" | "finish"
+    kind: str  # "bash" | "patch" | "view" | "test" | "finish"
     payload: str = ""
     start_line: int | None = None
     end_line: int | None = None
@@ -27,39 +27,62 @@ class AgentAction:
 def parse_actions(text: str) -> tuple[list[AgentAction], bool]:
     """Return ordered actions; anything after the FINISH line is ignored."""
     found: list[AgentAction] = []
+    fence = ""
+    language = ""
+    body: list[str] = []
+    fence_order = 0
+    offset = 0
+    tool_languages = {
+        "bash": "bash", "sh": "bash", "shell": "bash", "diff": "patch", "patch": "patch",
+    }
 
-    def collect(regex: re.Pattern[str], kind: str) -> None:
-        for match in regex.finditer(text):
-            action = AgentAction(kind=kind, payload=match.group(1).strip(), order=match.start())
-            found.append(action)
+    for raw_line in text.splitlines(keepends=True):
+        line = raw_line.rstrip("\r\n")
+        order = offset
+        offset += len(raw_line)
+        fence_match = FENCE_RE.fullmatch(line)
+        if fence:
+            if (
+                fence_match
+                and fence_match.group(1)[0] == fence[0]
+                and len(fence_match.group(1)) >= len(fence)
+                and not fence_match.group(2).strip()
+            ):
+                if language in tool_languages:
+                    kind = tool_languages[language]
+                    payload = "".join(body)
+                    found.append(AgentAction(
+                        kind=kind,
+                        payload=payload if kind == "patch" else payload.strip(),
+                        order=fence_order,
+                    ))
+                fence = ""
+            else:
+                body.append(raw_line)
+            continue
+        if fence_match:
+            fence = fence_match.group(1)
+            language = fence_match.group(2).strip()
+            body = []
+            fence_order = order
+            continue
 
-    collect(BASH_BLOCK_RE, "bash")
-    collect(PATCH_BLOCK_RE, "patch")
-    for match in VIEW_LINE_RE.finditer(text):
-        start = int(match.group(2)) if match.group(2) else None
-        end = int(match.group(3)) if match.group(3) else None
-        action = AgentAction(
-            kind="view",
-            payload=match.group(1),
-            start_line=start,
-            end_line=end,
-            order=match.start(),
-        )
-        found.append(action)
+        # Code samples, including unknown or unclosed fences, cannot issue protocol actions.
+        if match := FINISH_RE.fullmatch(line):
+            found.append(AgentAction(kind="finish", payload=match.group(1).strip(), order=order))
+            return found, True
+        if match := VIEW_LINE_RE.fullmatch(line):
+            found.append(AgentAction(
+                kind="view",
+                payload=match.group(1),
+                start_line=int(match.group(2)) if match.group(2) else None,
+                end_line=int(match.group(3)) if match.group(3) else None,
+                order=order,
+            ))
+        elif match := TEST_LINE_RE.fullmatch(line):
+            found.append(AgentAction(kind="test", payload=match.group(1).strip(), order=order))
 
-    finish_match = FINISH_RE.search(text)
-    finished = finish_match is not None
-    if finish_match:
-        found = [action for action in found if action.order < finish_match.start()]
-        finish = AgentAction(
-            kind="finish",
-            payload=finish_match.group(1).strip(),
-            order=finish_match.start(),
-        )
-        found.append(finish)
-
-    found.sort(key=lambda action: action.order)
-    return found, finished
+    return found, False
 
 
 def truncate(text: str, limit: int = OUTPUT_CHAR_LIMIT) -> str:

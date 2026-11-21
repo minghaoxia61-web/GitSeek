@@ -96,6 +96,24 @@ def test_index_status_marks_all_old_records_expired() -> None:
     assert status.expired_repository_count == 1
 
 
+def test_one_new_record_does_not_hide_expired_records() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        old = make_repository()
+        fresh = make_repository()
+        fresh.github_id = 102
+        fresh.full_name = "example/fresh"
+        fresh.fetched_at = datetime(2026, 11, 21, tzinfo=UTC)
+        session.add_all([old, fresh])
+        session.commit()
+        status = RepositoryIndex(session).status(now=fresh.fetched_at)
+
+    assert status.freshness_state == "stale"
+    assert status.expired_repository_count == 1
+    assert status.next_refresh_at.date().isoformat() == "2026-08-13"
+
+
 def test_semantic_index_recalls_repository_from_chinese_intent() -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)

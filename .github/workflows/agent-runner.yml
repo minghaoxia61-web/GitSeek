@@ -6,13 +6,14 @@ on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "drain = process one queued run; ingest = index a repository first"
+        description: "drain = process queue; ingest = index repo; verify = safe sandbox/model checks"
         required: true
         default: "drain"
         type: choice
         options:
           - drain
           - ingest
+          - verify
       repo:
         description: "owner/repo to index (only used when mode=ingest)"
         required: false
@@ -41,15 +42,50 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python -m packages.agent_core.ingestion --repo "${{ github.event.inputs.repo }}"
-      - name: Process one queued fixer run
+          REPO: ${{ inputs.repo }}
+        run: python -m packages.agent_core.ingestion --repo "$REPO"
+      - name: Verify isolated repair fixture
+        if: ${{ inputs.mode == 'verify' }}
+        run: |
+          python -m pip install -e '.[dev]'
+          docker pull python:3.12
+          python -m pytest tests/test_fixer_docker.py -q
+      - name: Process one queued fixer run or check model connectivity
         if: ${{ github.event.inputs.mode != 'ingest' }}
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENSCOUT_OPENAI_API_URL: ${{ vars.OPENSCOUT_OPENAI_API_URL }}
+          OPENSCOUT_OPENAI_MODEL: ${{ vars.OPENSCOUT_OPENAI_MODEL || 'deepseek-v4-flash' }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OPENSCOUT_SANDBOX_BACKEND: docker
+          MODE: ${{ inputs.mode || 'drain' }}
           # DeepSeek list prices; adjust to your plan so /fixer shows real cost.
           OPENSCOUT_FIXER_INPUT_COST_PER_MILLION: "0.27"
           OPENSCOUT_FIXER_OUTPUT_COST_PER_MILLION: "1.10"
-        run: python -m workers.agent_runner.runner --once --backend docker
+        run: |
+          test -n "$DATABASE_URL" || { printf '%s\n' 'DATABASE_URL is required'; exit 1; }
+          test -n "$OPENAI_API_KEY" || { printf '%s\n' 'OPENAI_API_KEY is required'; exit 1; }
+          test -n "$OPENSCOUT_OPENAI_API_URL" || { printf '%s\n' 'Set the OPENSCOUT_OPENAI_API_URL Actions variable to the model provider base URL'; exit 1; }
+          if [ "$MODE" = verify ]; then
+            python - <<'PY'
+          import asyncio
+          from packages.agent_core.llm import ChatCompletionClient
+          from packages.domain.settings import get_settings
+
+          async def check():
+              settings = get_settings()
+              async with ChatCompletionClient(
+                  settings.openai_api_key.get_secret_value(),
+                  model=settings.openai_model,
+                  base_url=settings.openai_api_url,
+              ) as client:
+                  result = await client.complete(
+                      [{"role": "user", "content": "Reply only with OK."}], max_tokens=512,
+                  )
+                  print(f"Model chat endpoint verified: {result.model}; output_tokens={result.output_tokens}")
+          asyncio.run(check())
+          PY
+          else
+            python -m workers.agent_runner.runner --once --backend docker
+          fi

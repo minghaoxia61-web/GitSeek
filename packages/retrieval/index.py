@@ -178,7 +178,7 @@ class RepositoryIndex:
                 freshness_state = "empty"
             elif expired_repository_count == repository_count:
                 freshness_state = "expired"
-            elif stale_repository_count == repository_count:
+            elif stale_repository_count > 0:
                 freshness_state = "stale"
             else:
                 freshness_state = "fresh"
@@ -190,7 +190,7 @@ class RepositoryIndex:
                 stale_repository_count=stale_repository_count,
                 expired_repository_count=expired_repository_count,
                 freshness_state=freshness_state,
-                next_refresh_at=(freshest_at + timedelta(days=7) if freshest_at else None),
+                next_refresh_at=(oldest_at + timedelta(days=7) if oldest_at else None),
                 ready=repository_count > 0,
             )
         except SQLAlchemyError:

@@ -9,12 +9,12 @@ import argparse
 import asyncio
 import shutil
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import sessionmaker
 
-from packages.agent_core.fixer import FixerAgent, FixerConfig
+from packages.agent_core.fixer import FAILURE_TEST_ENVIRONMENT, FixerAgent, FixerConfig
 from packages.agent_core.ingestion import clone_repository, workspace_root
 from packages.agent_core.issue_parser import enrich_issue, parse_issue
 from packages.agent_core.llm import ChatCompletionClient
@@ -30,9 +30,24 @@ TERMINAL_STATUSES = {"succeeded", "failed"}
 
 
 def claim_next_run(session_factory: sessionmaker) -> str | None:
-    """Claim one queued run; SKIP LOCKED keeps concurrent workers from colliding."""
+    """Fail abandoned runs, then claim one queued run without retrying old side effects."""
     with session_factory() as session:
         with session.begin():
+            now = datetime.now(UTC)
+            expired = select(FixerRunRecord).where(
+                FixerRunRecord.status == "running",
+                FixerRunRecord.updated_at < now - timedelta(minutes=30),
+            )
+            if session.get_bind().dialect.name == "postgresql":
+                expired = expired.with_for_update(skip_locked=True)
+            for row in session.scalars(expired):
+                row.status = "failed"
+                row.success = False
+                row.failure_category = FAILURE_TEST_ENVIRONMENT
+                row.error = "Worker heartbeat expired after 30 minutes; run will not be retried"
+                row.completed_at = now
+                row.updated_at = now
+
             statement = (
                 select(FixerRunRecord)
                 .where(FixerRunRecord.status == "queued")
@@ -45,7 +60,8 @@ def claim_next_run(session_factory: sessionmaker) -> str | None:
             if row is None:
                 return None
             row.status = "running"
-            row.started_at = datetime.now(UTC)
+            row.started_at = now
+            row.updated_at = now
             return row.id
 
 
@@ -59,6 +75,11 @@ def _issue_text(issue) -> str:  # noqa: ANN001 - GitHubIssue
 def _persist_step_factory(session_factory: sessionmaker, run_id: str):
     async def persist_step(step) -> None:  # noqa: ANN001 - FixerStepTrace
         with session_factory() as session:
+            session.execute(
+                update(FixerRunRecord)
+                .where(FixerRunRecord.id == run_id, FixerRunRecord.status == "running")
+                .values(updated_at=datetime.now(UTC))
+            )
             session.add(
                 FixerStepRecord(
                     run_id=run_id,
@@ -84,39 +105,39 @@ async def process_run(
     keep_workspace: bool = False,
 ) -> None:
     """Execute one claimed run end-to-end; any exception marks the run failed."""
-    settings = settings or get_settings()
-    if session_factory is None:
-        session_factory = create_session_factory(create_db_engine(settings.database_url))
-
-    with session_factory() as session:
-        run = session.get(FixerRunRecord, run_id)
-        if run is None:
-            return
-        repo_full_name = run.repo_full_name
-        issue_number = run.issue_number
-        model = run.model
-        config = FixerConfig(
-            model=model or settings.fixer_model or settings.openai_model,
-            max_rounds=run.max_rounds,
-            token_budget=run.token_budget,
-            input_cost_per_million=settings.fixer_input_cost_per_million,
-            output_cost_per_million=settings.fixer_output_cost_per_million,
-        )
-
-    owner, _, name = repo_full_name.partition("/")
-    if not owner or not name:
-        _fail(session_factory, run_id, "invalid repo_full_name")
-        return
-
-    workspace_slug = f"{repo_full_name.replace('/', '__')}-{run_id[:8]}"
-    workspace = workspace_root(settings.agent_workspace_root) / workspace_slug
+    workspace = None
     try:
+        if session_factory is None:
+            settings = settings or get_settings()
+            session_factory = create_session_factory(create_db_engine(settings.database_url))
+
+        with session_factory() as session:
+            run = session.get(FixerRunRecord, run_id)
+            if run is None or run.status != "running":
+                return
+            settings = settings or get_settings()
+            repo_full_name = run.repo_full_name
+            issue_number = run.issue_number
+            config = FixerConfig(
+                model=run.model or settings.fixer_model or settings.openai_model,
+                max_rounds=run.max_rounds,
+                token_budget=run.token_budget,
+                input_cost_per_million=settings.fixer_input_cost_per_million,
+                output_cost_per_million=settings.fixer_output_cost_per_million,
+            )
+
+        owner, _, name = repo_full_name.partition("/")
+        if not owner or not name:
+            raise ValueError("invalid repo_full_name")
+        if issue_number is None:
+            raise ValueError("run has no issue number")
+
+        workspace_slug = f"{repo_full_name.replace('/', '__')}-{run_id[:8]}"
+        workspace = workspace_root(settings.agent_workspace_root) / workspace_slug
         async with GitHubClient(
             token=settings.github_token,
             base_url=settings.github_api_url,
         ) as github:
-            if issue_number is None:
-                raise ValueError("run has no issue number")
             issue = await github.get_issue(owner, name, issue_number)
         issue_text = _issue_text(issue)
 
@@ -168,7 +189,9 @@ async def process_run(
 
         with session_factory() as session:
             with session.begin():
-                row = session.get(FixerRunRecord, run_id)
+                row = session.get(FixerRunRecord, run_id, with_for_update=True)
+                if row is None or row.status != "running":
+                    return
                 row.status = "succeeded" if result.success else "failed"
                 row.success = result.success
                 row.failure_category = result.failure_category
@@ -191,22 +214,26 @@ async def process_run(
                         round=result.rounds,
                         diff=result.diff or None,
                         apply_ok=bool(result.diff) or None,
-                        test_ok=result.success if config.test_command else None,
+                        test_ok=result.test_ok,
                     )
                 )
     except Exception as exc:  # noqa: BLE001 - worker boundary: record and continue
+        if session_factory is None:
+            raise  # No database connection is available to persist this failure.
         _fail(session_factory, run_id, f"{type(exc).__name__}: {exc}")
     finally:
-        if not keep_workspace:
+        if workspace is not None and not keep_workspace:
             shutil.rmtree(workspace, ignore_errors=True)
 
 
 def _fail(session_factory: sessionmaker, run_id: str, message: str) -> None:
     with session_factory() as session:
         with session.begin():
-            row = session.get(FixerRunRecord, run_id)
+            row = session.get(FixerRunRecord, run_id, with_for_update=True)
             if row is not None and row.status not in TERMINAL_STATUSES:
                 row.status = "failed"
+                row.success = False
+                row.failure_category = FAILURE_TEST_ENVIRONMENT
                 row.error = message[:1000]
                 row.completed_at = datetime.now(UTC)
 
