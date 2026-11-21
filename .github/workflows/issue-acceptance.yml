@@ -1,0 +1,51 @@
+name: Real issue acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: real-issue-acceptance
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e '.[dev]'
+      - name: Build test environment without application credentials
+        run: |
+          docker build -t gitseek-issue-check:local - <<'DOCKERFILE'
+          FROM python:3.12
+          RUN python -m pip install --no-cache-dir pytest==8.4.2
+          DOCKERFILE
+      - name: Reproduce and repair boltons issue 348 in isolation
+        env:
+          DATABASE_URL: "sqlite+pysqlite:///:memory:"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENSCOUT_OPENAI_API_URL: ${{ vars.OPENSCOUT_OPENAI_API_URL }}
+          OPENSCOUT_OPENAI_MODEL: ${{ vars.OPENSCOUT_OPENAI_MODEL || 'deepseek-v4-flash' }}
+          OPENSCOUT_RUN_REAL_ISSUE: "1"
+          OPENSCOUT_ACCEPTANCE_OUTPUT: ${{ runner.temp }}/gitseek-issue-report
+        run: |
+          test -n "$OPENAI_API_KEY" || { printf '%s\n' 'OPENAI_API_KEY is required'; exit 1; }
+          test -n "$OPENSCOUT_OPENAI_API_URL" || { printf '%s\n' 'OPENSCOUT_OPENAI_API_URL is required'; exit 1; }
+          python -m pytest tests/test_fixer_real_issue.py -q -s --tb=short
+      - name: Save acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: boltons-348-acceptance
+          path: ${{ runner.temp }}/gitseek-issue-report
+          retention-days: 7
